@@ -1,0 +1,83 @@
+FreeGuide Code Map — TD-MPC2 Source Structure
+==============================================
+
+1. World Model Class:
+   - File: tdmpc2/tdmpc2/common/world_model.py
+   - Class: WorldModel(nn.Module)
+   - Key components:
+     * _encoder: layers.enc(cfg) — encodes observations to latent
+     * _dynamics: layers.mlp(...) — predicts next latent state
+     * _reward: layers.mlp(...) — predicts reward (two-hot bins)
+     * _termination: layers.mlp(...) — predicts termination (if episodic)
+     * _pi: layers.mlp(...) — policy prior (outputs mean + log_std)
+     * _Qs: layers.Ensemble([...]) — vectorized Q ensemble (num_q heads, default 5)
+
+2. Dynamics Model Forward:
+   - File: tdmpc2/tdmpc2/common/world_model.py
+   - Method: WorldModel.next(z, a, task) — line 114-121
+   - Concatenates [z, a] (+ task_emb if multitask), passes through _dynamics MLP
+   - Output has SimNorm activation (simplicial normalization)
+
+3. Q-function Ensemble:
+   - Definition: world_model.py line 30 — self._Qs = layers.Ensemble([...])
+   - Uses vectorized ensemble via layers.Ensemble (layers.py line 8-33)
+   - Q(z, a, task, return_type) — line 186-216
+   - Supports return_type: 'min', 'avg', 'all'
+   - Uses two_hot discrete regression for Q-values
+
+4. MPPI Planning / Trajectory Scoring:
+   - File: tdmpc2/tdmpc2/tdmpc2.py
+   - Method: TDMPC2._plan(obs, t0, eval_mode, task) — line 140-207
+   - _estimate_value(z, actions, task) — line 124-137
+     * Rolls out horizon steps using model.next()
+     * Accumulates discounted rewards
+     * Adds terminal Q-value: model.Q(z, action, task, return_type='avg')
+   - MPPI loop (line 174-198):
+     * Samples actions, evaluates with _estimate_value
+     * Selects elite actions, updates mean/std
+
+5. Training Main Loop:
+   - File: tdmpc2/tdmpc2/trainer/online_trainer.py
+   - Class: OnlineTrainer.train() — line 74-127
+   - Calls self.agent.act() for action selection (uses planning)
+   - Calls self.agent.update(self.buffer) for model update
+   - Evaluates with self.eval() every eval_freq steps
+   - Episode boundary handling: lines 83-101
+
+6. Model Update (_update):
+   - File: tdmpc2/tdmpc2/tdmpc2.py
+   - Method: TDMPC2._update(obs, action, reward, terminated, task) — line 260-332
+   - Losses: consistency, reward, value, termination
+   - Also updates policy (update_pi) and target Q-networks (soft_update_target_Q)
+
+7. Hydra Config:
+   - Default config: tdmpc2/tdmpc2/config.yaml
+   - Parser: tdmpc2/tdmpc2/common/parser.py — parse_cfg() converts to dataclass
+   - Config gets converted to a frozen dataclass via cfg_to_dataclass()
+
+8. Reward Prediction:
+   - WorldModel.reward(z, a, task) — world_model.py line 123-130
+   - Uses two-hot discrete regression (num_bins=101)
+
+9. Termination Prediction:
+   - WorldModel.termination(z, task) — world_model.py line 132-141
+   - Only used when cfg.episodic=true
+
+10. Logger:
+    - File: tdmpc2/tdmpc2/common/logger.py
+    - Supports wandb and CSV logging
+    - eval.csv saved to work_dir with columns: step, episode_reward
+
+11. Key Dimensions (model_size=5, default):
+    - latent_dim: 512
+    - mlp_dim: 512
+    - enc_dim: 256
+    - num_q: 5 (Q-ensemble heads)
+    - action_dim: task-dependent
+    - num_bins: 101 (for two-hot discrete regression)
+
+12. Running from:
+    - Working directory: tdmpc2/tdmpc2/
+    - Command: python train.py task=walker-walk steps=5000 ...
+    - Must disable wandb: enable_wandb=false
+    - Must use compile=false for small runs (compilation overhead)
