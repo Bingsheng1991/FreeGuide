@@ -241,9 +241,6 @@ class TDMPC2(torch.nn.Module):
 			# Use ensemble for next state prediction + disagreement
 			z_next, edd = self.model.ensemble_dynamics(z, actions[t], task)
 
-			# Also use main dynamics for the extrinsic rollout
-			z_main = self.model.next(z, actions[t], task)
-
 			# Q-value ensemble variance (epistemic uncertainty in value)
 			qev = torch.zeros(self.cfg.num_samples, device=z.device)
 			if fg['use_qev']:
@@ -268,7 +265,7 @@ class TDMPC2(torch.nn.Module):
 
 			discount_update = self.discount[torch.tensor(task)] if self.cfg.multitask else self.discount
 			discount = discount * discount_update
-			z = z_main  # Use main dynamics for state transition
+			z = z_next  # Use ensemble mean for state transition (paper Algorithm 1, line 26)
 			if self.cfg.episodic:
 				termination = torch.clip(termination + (self.model.termination(z, task) > 0.5).float(), max=1.)
 

@@ -431,8 +431,8 @@ pip install dm_control mujoco hydra-core omegaconf wandb matplotlib seaborn pand
 - `freeguide/info_gain_qev`（raw）
 - `freeguide/beta`
 - `freeguide/ensemble_loss`
-- `reward_prediction_loss`（世界模型的 reward head 训练 loss，**Fig 5 需要**）
-- `wall_clock_time`（累计训练时间）
+- `reward_loss`（世界模型的 reward head 训练 loss，**Fig 5 需要**）
+- `elapsed_time`（累计训练时间）
 
 如果 `reward_loss` 还没有被 log，在代码中加上再同步到服务器。
 
@@ -497,9 +497,9 @@ P2 实际新增 runs：18 + 6 = 24 runs
 
 以下图表从 P1/P2 的实验 log 中提取，不需要额外跑实验：
   - Fig 4 DoF scaling：从 P1 主实验的 sample efficiency 数据计算
-  - Fig 5 Reward vs Planning 分析：从 P1 的 reward_prediction_loss log 提取 + latent state PCA
+  - Fig 5 Reward vs Planning 分析：从 P1 的 reward_loss log 提取 + latent state PCA
   - Fig 8 Information dynamics：从 P1 全部 5 个任务的 FreeGuide 实验 log 提取 info_gain, beta, ensemble_loss
-  - Table 2 Wall-clock overhead：从 P1 的 wall_clock_time 计算
+  - Table 2 Wall-clock overhead：从 P1 的 elapsed_time 计算
 
 总实际 runs：75 (P1) + 24 (P2) = 99 runs
 ```
