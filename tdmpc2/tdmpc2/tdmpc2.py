@@ -51,6 +51,11 @@ class TDMPC2(torch.nn.Module):
 		self.model = WorldModel(cfg).to(self.device)
 		self._freeguide_cfg = cfg.freeguide if hasattr(cfg, 'freeguide') else cfg.get('freeguide', {'enabled': False})
 		self._freeguide_enabled = self._freeguide_cfg.get('enabled', False)
+		self._rnd_cfg = cfg.rnd if hasattr(cfg, 'rnd') else cfg.get('rnd', {'enabled': False})
+		self._rnd_enabled = self._rnd_cfg.get('enabled', False)
+		# Mutual exclusivity check
+		if self._freeguide_enabled and self._rnd_enabled:
+			raise ValueError('FreeGuide and RND cannot both be enabled. Set one to false.')
 
 		# Build optimizer param groups
 		optim_groups = [
@@ -85,6 +90,23 @@ class TDMPC2(torch.nn.Module):
 				'ig_running_std': 1.0,
 			}
 
+		# RND: separate optimizer for predictor network + running normalization stats
+		if self._rnd_enabled:
+			self.rnd_optim = torch.optim.Adam(
+				self.model._rnd_predictor.parameters(), lr=self.cfg.lr
+			)
+			# Running normalization for RND bonus
+			self._rnd_bonus_mean = 0.0
+			self._rnd_bonus_std = 1.0
+			# Logging accumulators
+			self._rnd_log = {
+				'rnd_bonus_raw': 0.0,
+				'rnd_bonus_normalized': 0.0,
+				'rnd_predictor_loss': 0.0,
+				'rnd_bonus_running_mean': 0.0,
+				'rnd_bonus_running_std': 1.0,
+			}
+
 		self.model.eval()
 		self.scale = RunningScale(cfg)
 		self.cfg.iterations += 2*int(cfg.action_dim >= 20) # Heuristic for large action spaces
@@ -97,6 +119,8 @@ class TDMPC2(torch.nn.Module):
 			print(f'FreeGuide enabled: K={self._freeguide_cfg["ensemble_K"]}, '
 			      f'alpha={self._freeguide_cfg["alpha"]}, '
 			      f'beta_init={self._freeguide_cfg["beta_init"]}')
+		if self._rnd_enabled:
+			print(f'RND enabled: bonus_coef={self._rnd_cfg["bonus_coef"]}')
 		self._prev_mean = torch.nn.Buffer(torch.zeros(self.cfg.horizon, self.cfg.action_dim, device=self.device))
 		if cfg.compile:
 			print('Compiling update function with torch.compile...')
@@ -423,6 +447,30 @@ class TDMPC2(torch.nn.Module):
 		return reward + discount * (1-terminated) * self.model.Q(next_z, action, task, return_type='min', target=True)
 
 	def _update(self, obs, action, reward, terminated, task=None):
+		# RND: compute exploration bonus and add to reward before targets
+		rnd_predictor_loss = None
+		if self._rnd_enabled:
+			with torch.no_grad():
+				# Encode observations to get latent states for RND
+				z_for_rnd = self.model.encode(obs[:-1], task)  # [horizon, B, D]
+				# Compute raw RND bonus per timestep
+				rnd_bonus_raw = self.model.rnd_bonus(z_for_rnd)  # [horizon, B, 1]
+				# Update running normalization (EMA)
+				batch_mean = rnd_bonus_raw.mean().item()
+				batch_std = rnd_bonus_raw.std().item() + 1e-8
+				self._rnd_bonus_mean = 0.99 * self._rnd_bonus_mean + 0.01 * batch_mean
+				self._rnd_bonus_std = (0.99 * self._rnd_bonus_std**2 + 0.01 * batch_std**2) ** 0.5
+				# Normalize bonus
+				rnd_bonus_norm = (rnd_bonus_raw - self._rnd_bonus_mean) / (self._rnd_bonus_std + 1e-8)
+				# Add bonus to reward
+				bonus_coef = self._rnd_cfg['bonus_coef']
+				reward = reward + bonus_coef * rnd_bonus_norm
+				# Update logging
+				self._rnd_log['rnd_bonus_raw'] = batch_mean
+				self._rnd_log['rnd_bonus_normalized'] = rnd_bonus_norm.mean().item()
+				self._rnd_log['rnd_bonus_running_mean'] = self._rnd_bonus_mean
+				self._rnd_log['rnd_bonus_running_std'] = self._rnd_bonus_std
+
 		# Compute targets
 		with torch.no_grad():
 			next_z = self.model.encode(obs[1:], task)
@@ -480,6 +528,10 @@ class TDMPC2(torch.nn.Module):
 		if self._freeguide_enabled:
 			ensemble_loss_val = self._update_ensemble(obs, action, task)
 
+		# RND: train predictor network
+		if self._rnd_enabled:
+			rnd_predictor_loss = self._update_rnd_predictor(obs, task)
+
 		# Update policy
 		pi_info = self.update_pi(zs.detach(), task)
 
@@ -502,6 +554,10 @@ class TDMPC2(torch.nn.Module):
 		if self._freeguide_enabled:
 			info.update(TensorDict({
 				"freeguide_ensemble_loss": torch.tensor(ensemble_loss_val),
+			}))
+		if self._rnd_enabled:
+			info.update(TensorDict({
+				"rnd_predictor_loss": torch.tensor(rnd_predictor_loss if rnd_predictor_loss is not None else 0.0),
 			}))
 		return info.detach().mean()
 
@@ -563,6 +619,32 @@ class TDMPC2(torch.nn.Module):
 			'freeguide/ensemble_loss': self._fg_log['ensemble_loss'],
 			'freeguide/ig_running_mean': self._fg_log['ig_running_mean'],
 			'freeguide/ig_running_std': self._fg_log['ig_running_std'],
+		}
+
+	def _update_rnd_predictor(self, obs, task):
+		"""Train RND predictor network to match fixed target network output."""
+		with torch.no_grad():
+			z = self.model.encode(obs[:-1], task)  # [horizon, B, D]
+		# Compute predictor loss
+		rnd_loss = self.model.rnd_loss(z)
+		rnd_loss.backward()
+		torch.nn.utils.clip_grad_norm_(self.model._rnd_predictor.parameters(), self.cfg.grad_clip_norm)
+		self.rnd_optim.step()
+		self.rnd_optim.zero_grad(set_to_none=True)
+		loss_val = rnd_loss.item()
+		self._rnd_log['rnd_predictor_loss'] = loss_val
+		return loss_val
+
+	def get_rnd_metrics(self):
+		"""Return RND metrics for logging."""
+		if not self._rnd_enabled:
+			return {}
+		return {
+			'rnd/bonus_raw': self._rnd_log['rnd_bonus_raw'],
+			'rnd/bonus_normalized': self._rnd_log['rnd_bonus_normalized'],
+			'rnd/predictor_loss': self._rnd_log['rnd_predictor_loss'],
+			'rnd/bonus_running_mean': self._rnd_log['rnd_bonus_running_mean'],
+			'rnd/bonus_running_std': self._rnd_log['rnd_bonus_running_std'],
 		}
 
 	def update(self, buffer):

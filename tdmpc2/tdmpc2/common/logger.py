@@ -114,6 +114,7 @@ class Logger:
 		self._group = cfg_to_group(cfg)
 		self._seed = cfg.seed
 		self._eval = []
+		self._train = []
 		print_run(cfg)
 		self.project = cfg.get("wandb_project", "none")
 		self.entity = cfg.get("wandb_entity", "none")
@@ -237,5 +238,29 @@ class Logger:
 			self._eval.append(np.array([d[keys[0]], d[keys[1]]]))
 			pd.DataFrame(np.array(self._eval)).to_csv(
 				self._log_dir / "eval.csv", header=keys, index=None
+			)
+		if category == "train" and self._save_csv:
+			# Save training metrics CSV for offline analysis (Phase 4 figures)
+			train_keys = ["step", "episode_reward", "elapsed_time",
+			              "reward_loss", "consistency_loss", "value_loss", "total_loss"]
+			# FreeGuide-specific keys
+			fg_keys = ["freeguide/beta", "freeguide/info_gain_edd",
+			           "freeguide/info_gain_qev", "freeguide/info_gain_normalized",
+			           "freeguide/ensemble_loss", "freeguide/ig_running_mean",
+			           "freeguide/ig_running_std"]
+			# RND-specific keys
+			rnd_keys = ["rnd/bonus_raw", "rnd/bonus_normalized",
+			            "rnd/predictor_loss", "rnd/bonus_running_mean",
+			            "rnd/bonus_running_std"]
+			all_keys = train_keys + fg_keys + rnd_keys
+			row = []
+			for k in all_keys:
+				v = d.get(k, np.nan)
+				if hasattr(v, 'item'):
+					v = v.item()
+				row.append(float(v) if v is not None else np.nan)
+			self._train.append(row)
+			pd.DataFrame(self._train, columns=all_keys).to_csv(
+				self._log_dir / "train.csv", index=None
 			)
 		self._print(d, category)

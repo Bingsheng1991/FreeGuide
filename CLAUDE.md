@@ -129,7 +129,7 @@ mkdir -p experiments/scripts experiments/results analysis paper/figures paper/ta
 ```bash
 conda activate freeguide
 cd /home/miller/Desktop/FreeGuide/tdmpc2
-python -m tdmpc2.train task=walker-walk steps=5000
+python -m tdmpc2.train task=walker-run steps=5000
 ```
 
 必须无报错地跑完 5000 步。如果报错，排查修复后重试。
@@ -275,7 +275,8 @@ class AdaptiveBeta:
 
 ### 1.5 Logging
 
-确保 wandb（或 tensorboard）中记录以下量：
+确保 wandb（或 tensorboard/csv）中记录以下量：
+- `episode_return`（每个 episode）
 - `freeguide/beta`
 - `freeguide/info_gain_edd`（raw，非归一化）
 - `freeguide/info_gain_qev`（raw）
@@ -283,15 +284,66 @@ class AdaptiveBeta:
 - `freeguide/ensemble_loss`
 - `freeguide/ig_running_mean`
 - `freeguide/ig_running_std`
+- `reward_prediction_loss`（世界模型 reward head 的训练 loss，**Fig 5 分析需要**）
+- `wall_clock_time`（累计训练时间，**Table 2 需要**）
 
-### 1.6 Commit
+**注意**：`reward_prediction_loss` 和 `wall_clock_time` 对所有方法（TD-MPC2, +RND, FreeGuide）都要记录，不仅仅是 FreeGuide。
+
+### 1.6 RND Baseline 实现
+
+实现 TD-MPC2 + RND 作为 exploration baseline。**RND 把 bonus 加到 reward 信号中，与 FreeGuide 改 planning 形成对照。**
+
+```python
+# 在世界模型类中添加：
+if cfg.rnd.enabled:
+    rnd_hidden = 128
+    # 固定的随机目标网络（不训练）
+    self.rnd_target = nn.Sequential(
+        nn.Linear(latent_dim, rnd_hidden), nn.ReLU(), nn.Linear(rnd_hidden, rnd_hidden)
+    )
+    for p in self.rnd_target.parameters():
+        p.requires_grad = False
+
+    # 可训练的预测网络（同架构）
+    self.rnd_predictor = nn.Sequential(
+        nn.Linear(latent_dim, rnd_hidden), nn.ReLU(), nn.Linear(rnd_hidden, rnd_hidden)
+    )
+
+def rnd_bonus(self, z):
+    """计算 RND exploration bonus。"""
+    target = self.rnd_target(z)
+    pred = self.rnd_predictor(z)
+    bonus = (pred - target).pow(2).mean(dim=-1)  # [B]
+    return bonus
+```
+
+**训练**：rnd_predictor 的 loss = MSE(pred, target.detach())，单独 optimizer 训练。
+
+**使用**：在 reward prediction 后，把 RND bonus 加到 reward 上：
+```python
+if cfg.rnd.enabled:
+    bonus = model.rnd_bonus(z)
+    bonus_normalized = (bonus - rnd_running_mean) / (rnd_running_std + 1e-8)
+    reward_augmented = reward + cfg.rnd.bonus_coef * bonus_normalized
+```
+
+**Hydra config**：
+```yaml
+rnd:
+  enabled: false
+  bonus_coef: 0.1
+```
+
+**互斥约束**：`rnd.enabled` 和 `freeguide.enabled` 不能同时为 true。加一个 assert 检查。
+
+### 1.7 Commit
 
 ```bash
 cd /home/miller/Desktop/FreeGuide/tdmpc2
-git add -A && git commit -m "feat: FreeGuide implementation (ensemble dynamics + MPPI scoring + adaptive beta)"
+git add -A && git commit -m "feat: FreeGuide + RND baseline implementation"
 ```
 
-### 1.7 快速验证
+### 1.8 快速验证
 
 运行 4 个实验（各 200K 步），**必须串行运行**以节省 VRAM：
 
@@ -310,23 +362,23 @@ python -m tdmpc2.train task=walker-run steps=200000 seed=1 \
   exp_name=validate_freeguide_walker-run
 
 # Baseline Humanoid-Walk
-python -m tdmpc2.train task=humanoid-walk steps=200000 seed=1 \
+python -m tdmpc2.train task=humanoid-run steps=200000 seed=1 \
   freeguide.enabled=false \
-  exp_name=validate_baseline_humanoid-walk
+  exp_name=validate_baseline_humanoid-run
 
 # FreeGuide Humanoid-Walk
-python -m tdmpc2.train task=humanoid-walk steps=200000 seed=1 \
+python -m tdmpc2.train task=humanoid-run steps=200000 seed=1 \
   freeguide.enabled=true \
-  exp_name=validate_freeguide_humanoid-walk
+  exp_name=validate_freeguide_humanoid-run
 ```
 
 跑完后，写一个 python 脚本画出对比 learning curve（2 个 subplot，每个任务一张），保存到 `logs/validation_curves.png`。
 
-### 1.8 验证判定
+### 1.9 验证判定
 
 读取 4 个实验的最终 return，判定：
 
-- ✅ **通过**：FreeGuide 在 humanoid-walk 上的 200K 步 return ≥ baseline 的 95%，且训练中段（50K-150K）有明显领先 → 继续 Phase 2
+- ✅ **通过**：FreeGuide 在 humanoid-run 上的 200K 步 return ≥ baseline 的 95%，且训练中段（50K-150K）有明显领先 → 继续 Phase 2
 - ⚠️ **边缘**：差距不明显 → 执行以下调试：
   1. 打印 `J_extrinsic` 和 `beta * J_epistemic` 的比值
   2. 如果 epistemic 项 < extrinsic 的 1%，尝试 fixed beta=0.3
@@ -335,7 +387,7 @@ python -m tdmpc2.train task=humanoid-walk steps=200000 seed=1 \
   5. 换 dog-run 任务（38 DoF）试试
 - ❌ **失败**：所有调试后仍无提升 → 写入 `logs/validation_failed.md` 记录所有尝试结果，等待人工决策
 
-### 1.9 标记完成
+### 1.10 标记完成
 
 ```bash
 echo "$(date)" > /home/miller/Desktop/FreeGuide/phase1.done
@@ -343,85 +395,162 @@ echo "$(date)" > /home/miller/Desktop/FreeGuide/phase1.done
 
 ---
 
-## Phase 2：DMControl 主实验
+## Phase 2：主实验 + 消融实验（A800 服务器）
 
-### 2.1 生成实验脚本
+> **所有正式实验在 3×A800 服务器上跑。不要在本地 4090 上跑正式实验。**
+> 本地 4090 仅用于代码开发、快速验证（Phase 1）和 debug。
 
-生成 `experiments/scripts/run_main.sh`：
+### 2.0 服务器环境准备
+
+```bash
+# 在 A800 服务器上执行（假设 SSH 可达）
+# 1. 把本地代码同步到服务器
+rsync -avz /home/miller/Desktop/FreeGuide/ server:/home/miller/FreeGuide/
+
+# 2. 在服务器上创建同样的 conda 环境
+conda create -n freeguide python=3.10 -y
+conda activate freeguide
+pip config set global.index-url https://mirrors.aliyun.com/pypi/simple/
+pip install torch torchvision --index-url https://download.pytorch.org/whl/cu118
+cd /home/miller/FreeGuide/tdmpc2 && pip install -e .
+pip install dm_control mujoco hydra-core omegaconf wandb matplotlib seaborn pandas scipy tensorboard
+```
+
+### 2.1 Logging 要求（重要）
+
+在实验脚本生成之前，**确认训练代码 log 了以下所有量**（Phase 4 分析需要用到）：
+
+必须 log 到 csv/wandb 的量：
+- `episode_return`（每个 episode）
+- `freeguide/info_gain_edd`（raw）
+- `freeguide/info_gain_qev`（raw）
+- `freeguide/beta`
+- `freeguide/ensemble_loss`
+- `reward_prediction_loss`（世界模型的 reward head 训练 loss，**Fig 5 需要**）
+- `wall_clock_time`（累计训练时间）
+
+如果 `reward_prediction_loss` 还没有被 log，在代码中加上再同步到服务器。
+
+### 2.2 实验总览与优先级
+
+全部实验按 3 个优先级分批，高优先级先跑：
 
 ```
-方法 × 任务 × Seeds 矩阵：
+═══════════════════════════════════════════════════════
+ 优先级 P1（必须最先跑完，论文核心结果）
+ → Table 1, Fig 2, Fig 3, Fig 4
+═══════════════════════════════════════════════════════
 
-方法（3种）：
-  tdmpc2:        freeguide.enabled=false
-  freeguide_qev: freeguide.enabled=true freeguide.use_edd=false freeguide.use_qev=true
-  freeguide:     freeguide.enabled=true
+主实验：3 methods × 5 tasks × 5 seeds = 75 runs × 3M steps
 
-任务（7个）：
-  cheetah-run walker-walk walker-run humanoid-walk humanoid-run dog-walk dog-run
+方法：
+  tdmpc2:        freeguide.enabled=false rnd.enabled=false
+  tdmpc2_rnd:    freeguide.enabled=false rnd.enabled=true
+  freeguide:     freeguide.enabled=true  rnd.enabled=false
+
+任务：
+  cheetah-run    (半猎豹, 6 DoF)
+  walker-run     (双足, 6 DoF)
+  quadruped-run  (简单四足, 12 DoF)
+  humanoid-run  (人形, 21 DoF)
+  dog-run        (复杂四足, 38 DoF)
 
 Seeds：1 2 3 4 5
 
-每个实验 3M steps。
+═══════════════════════════════════════════════════════
+ 优先级 P2（P1 跑完后立刻开始，消融分析）
+ → Fig 6, Fig 7
+═══════════════════════════════════════════════════════
+
+组件消融：5 variants × 2 tasks × 3 seeds = 30 runs × 3M steps
+
+任务：walker-run (6 DoF), humanoid-run (21 DoF)
+Seeds：1 2 3
+
+变体：
+  tdmpc2:        freeguide.enabled=false
+  qev_only:      enabled=true use_edd=false use_qev=true use_adaptive_beta=true
+  edd_only:      enabled=true use_edd=true use_qev=false use_adaptive_beta=true
+  fixed_beta_03: enabled=true use_adaptive_beta=false beta_init=0.3
+  freeguide:     enabled=true（完整版）
+
+注意：tdmpc2 和 freeguide 的 walker-run/humanoid-run 已在 P1 中跑过，
+可以直接复用 P1 的 seed=1,2,3 结果，实际只需额外跑：
+  3 variants (qev_only, edd_only, fixed_beta_03) × 2 tasks × 3 seeds = 18 runs
+
+Ensemble K 消融（humanoid-run only）：
+  K = 2, 3, 5  seeds=1,2,3 = 9 runs × 3M steps
+  K=3 可以复用 P1 的 freeguide humanoid-run seed=1,2,3
+  实际只需额外跑：2 K-values × 3 seeds = 6 runs
+
+P2 实际新增 runs：18 + 6 = 24 runs
+
+═══════════════════════════════════════════════════════
+ 优先级 P3（P1 数据可用后就能做，纯分析无需额外实验）
+ → Fig 4, Fig 5, Fig 8, Table 2
+═══════════════════════════════════════════════════════
+
+以下图表从 P1/P2 的实验 log 中提取，不需要额外跑实验：
+  - Fig 4 DoF scaling：从 P1 主实验的 sample efficiency 数据计算
+  - Fig 5 Reward vs Planning 分析：从 P1 的 reward_prediction_loss log 提取 + latent state PCA
+  - Fig 8 Information dynamics：从 P1 全部 5 个任务的 FreeGuide 实验 log 提取 info_gain, beta, ensemble_loss
+  - Table 2 Wall-clock overhead：从 P1 的 wall_clock_time 计算
+
+总实际 runs：75 (P1) + 24 (P2) = 99 runs
 ```
 
-脚本要求：
-- 用 `CUDA_VISIBLE_DEVICES=0` 跑（单卡 4090）
-- 用 nohup 后台运行，日志输出到 `logs/{exp_name}.log`
-- 每个实验之间不并行（4090 VRAM 不够并行两个 TD-MPC2）
-- 加一个预估时间注释：每个实验约 20h，105 个实验总计约 2100h
-- **优先级排序**：先跑 3 个关键任务（humanoid-walk, humanoid-run, dog-run）× 3 methods × 5 seeds = 45 个
+### 2.3 GPU 分配策略
 
-同时生成 `experiments/scripts/run_priority.sh`：只包含优先级最高的 45 个实验。
+```
+3 张 A800，每张同时跑 4 个实验（80GB VRAM 足够），共 12 个并行槽。
 
-### 2.2 执行优先实验
+GPU 0: humanoid-run 和 dog-run 的实验（高维任务，最重要）
+GPU 1: quadruped-run 和 walker-run 的实验
+GPU 2: cheetah-run 的实验 + P2 消融实验
 
-启动 `run_priority.sh` 中的第一个实验（串行模式）。
-
-> 注意：完整实验需要人工在服务器上并行执行。这里在本地 4090 上只跑关键子集验证。
-> 本地策略：先跑 humanoid-walk × 3 methods × 2 seeds = 6 个实验（约 5 天）。
-
-```bash
-conda activate freeguide
-cd /home/miller/Desktop/FreeGuide/tdmpc2
-bash /home/miller/Desktop/FreeGuide/experiments/scripts/run_priority.sh
+估计时间：
+  P1: 75 runs / 12 slots × ~15h/run ≈ 4-5 天
+  P2: 24 runs / 12 slots × ~15h/run ≈ 1-2 天
+  总计：约 6-7 天
 ```
 
-### 2.3 标记完成
+### 2.4 生成实验脚本
 
-当优先实验跑完后：
+生成以下脚本到 `experiments/scripts/`：
+
+**`run_p1_main.sh`**：P1 全部 75 个实验
+- 3 张 GPU 各分配任务，nohup 后台运行
+- 每张 GPU 串行排队 4 个实验
+- 命名规则：`{method}_{task}_s{seed}`
+- 日志输出到 `logs/{exp_name}.log`
+- 实验结果输出到 `experiments/results/{exp_name}/`
+
+**`run_p2_ablations.sh`**：P2 全部 24 个实验
+- 复用 P1 的 tdmpc2 和 freeguide 结果（检查 `experiments/results/` 下是否已有）
+- 只跑实际需要的 24 个新实验
+
+**`check_progress.sh`**：检查实验进度
+- 扫描 `experiments/results/` 下所有 eval.csv
+- 打印每个实验的进度（当前步数 / 3M）
+- 汇总：完成 X 个 / 运行中 X 个 / 未开始 X 个
+
+**P1 内部的启动顺序**（按重要性）：
+```
+第 1 批（立刻启动）：humanoid-run × 3 methods × 5 seeds = 15 runs
+第 2 批：dog-run × 3 methods × 5 seeds = 15 runs
+第 3 批：quadruped-run × 3 methods × 5 seeds = 15 runs
+第 4 批：walker-run × 3 methods × 5 seeds = 15 runs
+第 5 批：cheetah-run × 3 methods × 5 seeds = 15 runs
+```
+
+### 2.5 标记完成
+
+当 P1 全部 75 个实验跑完后：
 ```bash
 echo "$(date)" > /home/miller/Desktop/FreeGuide/phase2.done
 ```
 
----
-
-## Phase 3：消融实验
-
-### 3.1 生成消融脚本
-
-生成 `experiments/scripts/run_ablations.sh`：
-
-```
-任务：walker-run, humanoid-walk
-Seeds：1 2 3
-Steps：3M
-
-消融变体（7种）：
-  tdmpc2:        freeguide.enabled=false
-  qev_only:      enabled=true use_edd=false use_qev=true use_adaptive_beta=true
-  edd_only:      enabled=true use_edd=true use_qev=false use_adaptive_beta=true
-  fixed_beta_01: enabled=true use_adaptive_beta=false beta_init=0.1
-  fixed_beta_03: enabled=true use_adaptive_beta=false beta_init=0.3
-  fixed_beta_05: enabled=true use_adaptive_beta=false beta_init=0.5
-  freeguide:     enabled=true（完整版）
-
-Ensemble K 消融（walker-run only）：
-  K = 2, 3, 5  seeds=1,2,3
-```
-
-### 3.2 标记完成
-
+当 P2 全部 24 个实验跑完后：
 ```bash
 echo "$(date)" > /home/miller/Desktop/FreeGuide/phase3.done
 ```
@@ -430,30 +559,35 @@ echo "$(date)" > /home/miller/Desktop/FreeGuide/phase3.done
 
 ## Phase 4：分析与出图
 
+> 可以在 P1 部分实验完成后就开始，不需要等全部跑完。
+> 用已有数据先出初版图，后续补齐。
+
 ### 4.1 画图配置
 
 创建 `analysis/plot_config.py`：
 - matplotlib 配置：serif 字体，10pt，300 DPI
-- 配色 dict：TD-MPC2=#4C72B0, FreeGuide=#C44E52, FreeGuide-QEV=#DD8452, ...
+- 配色 dict：TD-MPC2=#4C72B0（蓝）, +RND=#8172B3（紫）, FreeGuide=#C44E52（红）, FreeGuide-QEV=#DD8452（橙）, FreeGuide-EDD=#55A868（绿）, Fixed-β=#937860（棕）
 - 通用函数：load_data, smooth, compute_ci, save_fig
 
 ### 4.2 生成所有图表
 
-创建以下分析脚本（每个可独立运行）：
+创建以下分析脚本（每个可独立运行），**图表编号与论文一一对应**：
 
-| 脚本 | 输出 | 内容 |
-|------|------|------|
-| `plot_main_results.py` | `paper/figures/fig2_main.pdf` | 7 任务 learning curve (2×4 grid) |
-| `plot_sample_efficiency.py` | `paper/figures/fig3_efficiency.pdf` | 达到 80% baseline 的步数 bar chart |
-| `plot_ablations.py` | `paper/figures/fig4_ablations.pdf` | 消融 learning curve (2×1) |
-| `plot_ensemble_k.py` | `paper/figures/fig5_ensemble_k.pdf` | K 敏感性 bar chart |
-| `plot_info_dynamics.py` | `paper/figures/fig6_dynamics.pdf` | info_gain + beta + loss 三面板 |
-| `compute_tables.py` | `paper/tables/table1.tex`, `table2.tex` | 主结果表 + overhead 表 |
-| `statistical_tests.py` | `paper/tables/stats.tex` | Welch t-test + Cohen's d |
+| 脚本 | 输出 | 论文编号 | 数据来源 | 内容 |
+|------|------|---------|---------|------|
+| `plot_main_results.py` | `fig2_main.pdf` | Fig 2 | P1 | 5 任务 learning curve (2×3 grid)，3 条线（TD-MPC2, +RND, FreeGuide），按 DoF 从低到高排列 |
+| `plot_sample_efficiency.py` | `fig3_efficiency.pdf` | Fig 3 | P1 | 达到 80% TD-MPC2 asymptotic return 的步数 bar chart，5 tasks × 3 methods |
+| `plot_dof_scaling.py` | `fig4_dof_scaling.pdf` | Fig 4 | P1 | X 轴 DoF，Y 轴 sample efficiency 提升 %。两条线：FreeGuide 和 +RND |
+| `plot_reward_vs_planning.py` | `fig5_reward_vs_planning.pdf` | **Fig 5** | P1 | **(a)** reward prediction loss over training: 3 条线（TD-MPC2 世界模型学真实 reward，+RND 世界模型学 distorted reward，FreeGuide 世界模型学真实 reward）→ 预期 FreeGuide ≈ TD-MPC2 < +RND。**(b)** latent state coverage heatmap at 500K steps: PCA 2D 投影，TD-MPC2 vs FreeGuide |
+| `plot_ablations.py` | `fig6_ablations.pdf` | Fig 6 | P2 | 消融 learning curve (2×1: walker-run + humanoid-run)，5 条线 |
+| `plot_ensemble_k.py` | `fig7_ensemble_k.pdf` | Fig 7 | P2 | K 敏感性 bar chart (humanoid-run)，K=2,3,5 |
+| `plot_info_dynamics.py` | `fig8_dynamics.pdf` | Fig 8 | P1 | 三面板：(a) info_gain_ema (b) beta (c) ensemble_loss，在全部 5 个任务上画（每个任务一条线或选 humanoid-run 为主 + 其他任务为辅），5 seeds 均值 + CI |
+| `compute_tables.py` | `table1.md`, `table2.md` | Table 1,2 | P1 | 主结果表 + wall-clock overhead 表 |
+| `statistical_tests.py` | `stats.md` | — | P1 | Welch t-test + Cohen's d |
 
 创建 `analysis/generate_all.py` 一键调用所有脚本。
 
-> 注意：如果实验数据还不完整（只有部分 seed 跑完），脚本应该能优雅处理——用已有数据画图，在标题中标注 "N seeds" 数量。
+> 如果实验数据还不完整（只有部分 seed 跑完），脚本应该能优雅处理——用已有数据画图，在标题中标注 "(N seeds)" 数量。
 
 ### 4.3 标记完成
 
@@ -517,3 +651,4 @@ echo "$(date)" > /home/miller/Desktop/FreeGuide/phase5.done
 6. **不要修改 TD-MPC2 的 encoder、reward head、Q-function 的训练逻辑**
 7. **freeguide.enabled=false 时，代码路径必须与原版 TD-MPC2 完全一致**
 8. **所有命令前先 `conda activate freeguide`**
+9. **绝对禁止轮询等待实验完成。所有训练实验用 `nohup ... &` 后台启动后立即返回。不要用 sleep/wait/tail -f 等方式等待实验跑完。实验完成后由人工通知，或者在下次启动时检查结果。**

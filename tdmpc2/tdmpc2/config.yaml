@@ -76,6 +76,11 @@ save_video: true
 save_agent: true
 seed: 1
 
+# rnd (Random Network Distillation baseline)
+rnd:
+  enabled: false
+  bonus_coef: 0.1
+
 # freeguide
 freeguide:
   enabled: false

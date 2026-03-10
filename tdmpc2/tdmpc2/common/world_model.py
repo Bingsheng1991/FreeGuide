@@ -18,6 +18,7 @@ class WorldModel(nn.Module):
 		super().__init__()
 		self.cfg = cfg
 		self._freeguide_cfg = cfg.freeguide if hasattr(cfg, 'freeguide') else cfg.get('freeguide', {'enabled': False})
+		self._rnd_cfg = cfg.rnd if hasattr(cfg, 'rnd') else cfg.get('rnd', {'enabled': False})
 		if cfg.multitask:
 			self._task_emb = nn.Embedding(len(cfg.tasks), cfg.task_dim, max_norm=1)
 			self.register_buffer("_action_masks", torch.zeros(len(cfg.tasks), cfg.action_dim))
@@ -39,7 +40,24 @@ class WorldModel(nn.Module):
 					nn.Linear(cfg.mlp_dim, cfg.latent_dim)
 				) for _ in range(K)
 			])
+		# RND: fixed random target network + trainable predictor network
+		if self._rnd_cfg.get('enabled', False):
+			rnd_hidden = 128
+			self._rnd_target = nn.Sequential(
+				nn.Linear(cfg.latent_dim, rnd_hidden),
+				nn.ReLU(),
+				nn.Linear(rnd_hidden, rnd_hidden),
+			)
+			self._rnd_predictor = nn.Sequential(
+				nn.Linear(cfg.latent_dim, rnd_hidden),
+				nn.ReLU(),
+				nn.Linear(rnd_hidden, rnd_hidden),
+			)
 		self.apply(init.weight_init)
+		# RND: freeze target network after weight init
+		if self._rnd_cfg.get('enabled', False):
+			for p in self._rnd_target.parameters():
+				p.requires_grad = False
 		init.zero_([self._reward[-1].weight, self._Qs.params["2", "weight"]])
 
 		self.register_buffer("log_std_min", torch.tensor(cfg.log_std_min))
@@ -145,6 +163,33 @@ class WorldModel(nn.Module):
 		mean_pred = preds.mean(0)  # [B, D]
 		disagree = ((preds - mean_pred.unsqueeze(0)) ** 2).mean(dim=(0, 2))  # [B]
 		return mean_pred, disagree
+
+	def rnd_bonus(self, z):
+		"""
+		RND: compute exploration bonus as MSE between target and predictor outputs.
+		Target network is fixed (random); predictor is trained to match it.
+		Args:
+			z (torch.Tensor): Latent state [B, D] or [T, B, D].
+		Returns:
+			bonus (torch.Tensor): Per-sample RND bonus [..., 1].
+		"""
+		target_out = self._rnd_target(z)
+		predictor_out = self._rnd_predictor(z)
+		bonus = ((target_out - predictor_out) ** 2).mean(dim=-1, keepdim=True)
+		return bonus
+
+	def rnd_loss(self, z):
+		"""
+		RND: compute predictor loss (predictor tries to match target output).
+		Args:
+			z (torch.Tensor): Latent state [B, D] or [T, B, D].
+		Returns:
+			loss (torch.Tensor): Scalar loss.
+		"""
+		with torch.no_grad():
+			target_out = self._rnd_target(z)
+		predictor_out = self._rnd_predictor(z)
+		return ((target_out - predictor_out) ** 2).mean()
 
 	def reward(self, z, a, task):
 		"""

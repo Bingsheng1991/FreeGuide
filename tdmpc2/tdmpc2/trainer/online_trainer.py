@@ -1,3 +1,5 @@
+import os
+from pathlib import Path
 from time import time
 
 import numpy as np
@@ -14,6 +16,8 @@ class OnlineTrainer(Trainer):
 		self._step = 0
 		self._ep_idx = 0
 		self._start_time = time()
+		self._latent_dump_interval = 100_000  # Save latent states every 100K steps
+		self._next_latent_dump = self._latent_dump_interval
 
 	def common_metrics(self):
 		"""Return a dictionary of current metrics."""
@@ -71,6 +75,23 @@ class OnlineTrainer(Trainer):
 		batch_size=(1,))
 		return td
 
+	@torch.no_grad()
+	def _dump_latent_states(self):
+		"""Save a batch of latent states for coverage analysis (Fig 5b)."""
+		try:
+			latent_dir = Path(self.cfg.work_dir) / 'latent_states'
+			latent_dir.mkdir(parents=True, exist_ok=True)
+			# Sample a batch from buffer and encode
+			obs, action, reward, terminated, task = self.buffer.sample()
+			z = self.agent.model.encode(obs[0], task)  # [B, latent_dim]
+			np.savez_compressed(
+				latent_dir / f'latent_{self._step}.npz',
+				z=z.cpu().numpy(),
+				step=self._step,
+			)
+		except Exception as e:
+			print(f'Warning: failed to dump latent states at step {self._step}: {e}')
+
 	def train(self):
 		"""Train a TD-MPC2 agent."""
 		train_metrics, done, eval_next = {}, True, False
@@ -102,6 +123,9 @@ class OnlineTrainer(Trainer):
 					# FreeGuide: add metrics to train log
 					if hasattr(self.agent, 'get_freeguide_metrics'):
 						train_metrics.update(self.agent.get_freeguide_metrics())
+					# RND: add metrics to train log
+					if hasattr(self.agent, 'get_rnd_metrics'):
+						train_metrics.update(self.agent.get_rnd_metrics())
 					train_metrics.update(self.common_metrics())
 					self.logger.log(train_metrics, 'train')
 					self._ep_idx = self.buffer.add(torch.cat(self._tds))
@@ -127,6 +151,11 @@ class OnlineTrainer(Trainer):
 				for _ in range(num_updates):
 					_train_metrics = self.agent.update(self.buffer)
 				train_metrics.update(_train_metrics)
+
+			# Dump latent states periodically (for Fig 5b latent coverage analysis)
+			if self._step >= self._next_latent_dump and self._step >= self.cfg.seed_steps:
+				self._dump_latent_states()
+				self._next_latent_dump += self._latent_dump_interval
 
 			self._step += 1
 
