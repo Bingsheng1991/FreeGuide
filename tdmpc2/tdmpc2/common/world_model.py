@@ -37,7 +37,7 @@ class WorldModel(nn.Module):
 				nn.Sequential(
 					layers.NormedLinear(cfg.latent_dim + cfg.action_dim + cfg.task_dim, cfg.mlp_dim),
 					layers.NormedLinear(cfg.mlp_dim, cfg.mlp_dim),
-					nn.Linear(cfg.mlp_dim, cfg.latent_dim)
+					layers.NormedLinear(cfg.mlp_dim, cfg.latent_dim, act=layers.SimNorm(cfg))
 				) for _ in range(K)
 			])
 		# RND: fixed random target network + trainable predictor network

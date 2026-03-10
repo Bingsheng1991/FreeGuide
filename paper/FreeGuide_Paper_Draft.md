@@ -135,7 +135,7 @@ $$\mathcal{I}_{\text{EDD}}(\mathbf{z}, \mathbf{a}) = \frac{1}{K} \sum_{k=1}^K \|
 
 **Training.** Each dynamics head $d_k$ is trained with the same joint-embedding prediction loss as the original dynamics model, but with independent random initialization. All heads share the encoder $h$ and are updated jointly. The "main" dynamics model used for trajectory rollouts during planning is the ensemble mean $\bar{d}$.
 
-**Computational cost.** Each dynamics head is a 2-layer MLP (512 → 512 → 512). With $K=3$ heads, this adds approximately 1.5M parameters (30% overhead on the 5M model), and negligible wall-clock overhead since the heads are evaluated in a single batched forward pass.
+**Computational cost.** Each dynamics head is a 2-layer MLP (512 → 512 → 512) with SimNorm output matching the main dynamics. With $K=3$ heads, this adds approximately 2.5M parameters (47% overhead on the 5.4M model), and negligible wall-clock overhead since the heads are evaluated in a single batched forward pass.
 
 #### 3.2.2 Method B: Q-Ensemble Variance (QEV)
 
@@ -266,7 +266,7 @@ We compare three methods that address the same question—how to balance exploit
 |--------|-----------------|-------------|-------------|
 | **TD-MPC2** | Nothing (baseline) | 0 | Standard MPPI scoring with cumulative reward only |
 | **TD-MPC2 + RND** | **Reward signal** | ~0.2M | Random Network Distillation (Burda et al., 2019): adds an exploration bonus to the reward used for world model training. The world model learns a *distorted* reward landscape that blends task reward with novelty bonus. |
-| **FreeGuide** (ours) | **Planning objective** | ~1.5M | Augments MPPI trajectory scoring with epistemic value. The world model trains on *unmodified* task rewards; exploration is injected only at decision time. |
+| **FreeGuide** (ours) | **Planning objective** | ~2.5M | Augments MPPI trajectory scoring with epistemic value. The world model trains on *unmodified* task rewards; exploration is injected only at decision time. |
 
 This comparison isolates a key design question: **is it better to inject exploration into the reward signal (modifying what the world model learns) or into the planning objective (modifying how the world model is used)?** We hypothesize that modifying the planning objective is cleaner, as it preserves the fidelity of the learned reward landscape.
 
@@ -341,9 +341,9 @@ Beyond aggregate performance, we examine *how* RND and FreeGuide differ qualitat
 |---------|-----|-----|------------|-------------|
 | TD-MPC2 (β=0) | ✗ | ✗ | ✗ | 0 |
 | FreeGuide-QEV | ✗ | ✓ | ✓ | 0 |
-| FreeGuide-EDD | ✓ | ✗ | ✓ | ~1.5M |
-| FreeGuide-Fixed (β=0.3) | ✓ | ✓ | ✗ | ~1.5M |
-| FreeGuide (full) | ✓ | ✓ | ✓ | ~1.5M |
+| FreeGuide-EDD | ✓ | ✗ | ✓ | ~2.5M |
+| FreeGuide-Fixed (β=0.3) | ✓ | ✓ | ✗ | ~2.5M |
+| FreeGuide (full) | ✓ | ✓ | ✓ | ~2.5M |
 
 **Fig. 6:** Ablation learning curves (2×1 subplot: Walker-Run and Humanoid-Run).
 
@@ -374,7 +374,7 @@ This pattern mirrors the "exploration-to-exploitation" transition observed in bi
 |--------|----------|---------------------|-------------|
 | TD-MPC2 | **XX.X** | — | 0 |
 | TD-MPC2 + RND | **XX.X** | ~X% | ~0.2M |
-| FreeGuide (K=3) | **XX.X** | ~X% | ~1.5M |
+| FreeGuide (K=3) | **XX.X** | ~X% | ~2.5M |
 
 <!-- TODO: fill with actual timing data -->
 
