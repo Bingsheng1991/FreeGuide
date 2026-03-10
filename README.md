@@ -84,7 +84,7 @@ The epistemic bonus is computed under `torch.no_grad()` during planning only —
 
 ## DMControl Tasks
 
-Evaluated on 7 tasks: `cheetah-run`, `walker-walk`, `walker-run`, `humanoid-walk`, `humanoid-run`, `dog-walk`, `dog-run`.
+Evaluated on 5 tasks: `cheetah-run`, `walker-run`, `quadruped-run`, `humanoid-run`, `dog-run`.
 
 ## References
 

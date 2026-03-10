@@ -366,12 +366,12 @@ python -m tdmpc2.train task=walker-run steps=200000 seed=1 \
   freeguide.enabled=true \
   exp_name=validate_freeguide_walker-run
 
-# Baseline Humanoid-Walk
+# Baseline Humanoid-Run
 python -m tdmpc2.train task=humanoid-run steps=200000 seed=1 \
   freeguide.enabled=false \
   exp_name=validate_baseline_humanoid-run
 
-# FreeGuide Humanoid-Walk
+# FreeGuide Humanoid-Run
 python -m tdmpc2.train task=humanoid-run steps=200000 seed=1 \
   freeguide.enabled=true \
   exp_name=validate_freeguide_humanoid-run

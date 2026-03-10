@@ -5,7 +5,7 @@ import sys
 sys.path.insert(0, '.')
 from plot_config import *
 
-TASKS = ['walker-run', 'humanoid-walk']
+TASKS = ['walker-run', 'humanoid-run']
 
 ABLATION_METHODS = {
     'tdmpc2': 'ablation_tdmpc2_{task}',

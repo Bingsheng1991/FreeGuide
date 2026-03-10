@@ -27,33 +27,27 @@ plt.rcParams.update({
 # Color scheme
 COLORS = {
     'tdmpc2': '#4C72B0',
+    'tdmpc2_rnd': '#8172B3',
     'freeguide': '#C44E52',
-    'freeguide_qev': '#DD8452',
     'qev_only': '#DD8452',
     'edd_only': '#55A868',
-    'fixed_beta_01': '#8172B3',
     'fixed_beta_03': '#937860',
-    'fixed_beta_05': '#DA8BC3',
 }
 
 METHOD_LABELS = {
     'tdmpc2': 'TD-MPC2',
+    'tdmpc2_rnd': 'TD-MPC2 + RND',
     'freeguide': 'FreeGuide',
-    'freeguide_qev': 'FreeGuide-QEV',
     'qev_only': 'QEV Only',
     'edd_only': 'EDD Only',
-    'fixed_beta_01': r'Fixed $\beta$=0.1',
     'fixed_beta_03': r'Fixed $\beta$=0.3',
-    'fixed_beta_05': r'Fixed $\beta$=0.5',
 }
 
 TASK_LABELS = {
     'cheetah-run': 'Cheetah Run',
-    'walker-walk': 'Walker Walk',
     'walker-run': 'Walker Run',
-    'humanoid-walk': 'Humanoid Walk',
+    'quadruped-run': 'Quadruped Run',
     'humanoid-run': 'Humanoid Run',
-    'dog-walk': 'Dog Walk',
     'dog-run': 'Dog Run',
 }
 

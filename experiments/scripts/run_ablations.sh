@@ -1,6 +1,6 @@
 #!/bin/bash
 # FreeGuide Ablation Experiments
-# Tasks: walker-run, humanoid-walk
+# Tasks: walker-run, humanoid-run
 # Seeds: 1 2 3
 # Steps: 3M
 #
@@ -27,7 +27,7 @@ EVAL_FREQ=50000
 LOGDIR="/home/miller/Desktop/FreeGuide/logs"
 mkdir -p ${LOGDIR}
 
-ABLATION_TASKS="walker-run humanoid-walk"
+ABLATION_TASKS="walker-run humanoid-run"
 SEEDS="1 2 3"
 
 run_experiment() {

@@ -1,9 +1,9 @@
 #!/bin/bash
 # FreeGuide Priority Experiments
-# Priority tasks: humanoid-walk, humanoid-run, dog-run (high-dimensional)
-# 3 tasks x 3 methods x 5 seeds = 45 experiments
+# Priority tasks: humanoid-run, dog-run (high-dimensional)
+# 2 tasks x 3 methods x 5 seeds = 30 experiments
 #
-# Local 4090 strategy: humanoid-walk x 3 methods x 2 seeds = 6 experiments (~5 days)
+# Local 4090 strategy: humanoid-run x 3 methods x 2 seeds = 6 experiments (~5 days)
 # Full priority set: run on server with multiple GPUs
 
 set -e
@@ -16,7 +16,7 @@ EVAL_FREQ=50000
 LOGDIR="/home/miller/Desktop/FreeGuide/logs"
 mkdir -p ${LOGDIR}
 
-PRIORITY_TASKS="humanoid-walk humanoid-run dog-run"
+PRIORITY_TASKS="humanoid-run dog-run"
 SEEDS="1 2 3 4 5"
 
 run_experiment() {
@@ -38,13 +38,13 @@ run_experiment() {
 }
 
 # === LOCAL 4090 SUBSET (6 experiments, ~5 days) ===
-echo "=== Running local 4090 subset: humanoid-walk x 3 methods x 2 seeds ==="
+echo "=== Running local 4090 subset: humanoid-run x 3 methods x 2 seeds ==="
 
 for seed in 1 2; do
-    run_experiment humanoid-walk tdmpc2 ${seed} "freeguide.enabled=false"
-    run_experiment humanoid-walk freeguide_qev ${seed} \
-        "freeguide.enabled=true freeguide.use_edd=false freeguide.use_qev=true"
-    run_experiment humanoid-walk freeguide ${seed} \
+    run_experiment humanoid-run tdmpc2 ${seed} "freeguide.enabled=false"
+    run_experiment humanoid-run tdmpc2_rnd ${seed} \
+        "freeguide.enabled=false rnd.enabled=true"
+    run_experiment humanoid-run freeguide ${seed} \
         "freeguide.enabled=true"
 done
 
@@ -56,8 +56,8 @@ echo "=== For full priority experiments, uncomment below and run on server ==="
 # for task in ${PRIORITY_TASKS}; do
 #     for seed in ${SEEDS}; do
 #         run_experiment ${task} tdmpc2 ${seed} "freeguide.enabled=false"
-#         run_experiment ${task} freeguide_qev ${seed} \
-#             "freeguide.enabled=true freeguide.use_edd=false freeguide.use_qev=true"
+#         run_experiment ${task} tdmpc2_rnd ${seed} \
+#             "freeguide.enabled=false rnd.enabled=true"
 #         run_experiment ${task} freeguide ${seed} \
 #             "freeguide.enabled=true"
 #     done

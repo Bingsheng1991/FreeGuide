@@ -1,8 +1,8 @@
 #!/bin/bash
 # FreeGuide Main Experiments
-# Methods x Tasks x Seeds = 3 x 7 x 5 = 105 experiments
-# Each experiment: 3M steps, ~20h on single GPU
-# Total: ~2100 GPU hours
+# Methods x Tasks x Seeds = 3 x 5 x 5 = 75 experiments
+# Each experiment: 3M steps, ~15h on single GPU
+# Total: ~1125 GPU hours
 #
 # Run with: bash run_main.sh
 # Uses CUDA_VISIBLE_DEVICES=0 (single 4090)
@@ -17,7 +17,7 @@ STEPS=3000000
 EVAL_FREQ=50000
 LOGDIR="/home/miller/Desktop/FreeGuide/logs"
 
-TASKS="cheetah-run walker-walk walker-run humanoid-walk humanoid-run dog-walk dog-run"
+TASKS="cheetah-run walker-run quadruped-run humanoid-run dog-run"
 SEEDS="1 2 3 4 5"
 
 run_experiment() {
@@ -43,9 +43,9 @@ for task in ${TASKS}; do
         # TD-MPC2 baseline
         run_experiment ${task} "tdmpc2" ${seed} "freeguide.enabled=false"
 
-        # FreeGuide-QEV (no EDD, only Q-value ensemble variance)
-        run_experiment ${task} "freeguide_qev" ${seed} \
-            "freeguide.enabled=true freeguide.use_edd=false freeguide.use_qev=true"
+        # TD-MPC2 + RND baseline
+        run_experiment ${task} "tdmpc2_rnd" ${seed} \
+            "freeguide.enabled=false rnd.enabled=true"
 
         # FreeGuide (full: EDD + QEV + adaptive beta)
         run_experiment ${task} "freeguide" ${seed} \

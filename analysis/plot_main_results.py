@@ -1,16 +1,15 @@
 """
-Figure 2: Main results — 7 tasks learning curves (2x4 grid).
+Figure 2: Main results — 5 tasks learning curves (2x3 grid).
 """
 import sys
 sys.path.insert(0, '.')
 from plot_config import *
 
-TASKS = ['cheetah-run', 'walker-walk', 'walker-run', 'humanoid-walk',
-         'humanoid-run', 'dog-walk', 'dog-run']
+TASKS = ['cheetah-run', 'walker-run', 'quadruped-run', 'humanoid-run', 'dog-run']
 
 METHODS = {
     'tdmpc2': 'tdmpc2_{task}',
-    'freeguide_qev': 'freeguide_qev_{task}',
+    'tdmpc2_rnd': 'tdmpc2_rnd_{task}',
     'freeguide': 'freeguide_{task}',
 }
 

@@ -1,5 +1,5 @@
 """
-Validation curves: Compare baseline vs FreeGuide on walker-run and humanoid-walk (200K steps).
+Validation curves: Compare baseline vs FreeGuide on walker-run and humanoid-run (200K steps).
 Saves to logs/validation_curves.png
 """
 import sys
@@ -11,9 +11,9 @@ EXPERIMENTS = {
         'tdmpc2': 'validate_baseline_walker-run',
         'freeguide': 'validate_freeguide_walker-run',
     },
-    'humanoid-walk': {
-        'tdmpc2': 'validate_baseline_humanoid-walk',
-        'freeguide': 'validate_freeguide_humanoid-walk',
+    'humanoid-run': {
+        'tdmpc2': 'validate_baseline_humanoid-run',
+        'freeguide': 'validate_freeguide_humanoid-run',
     },
 }
 

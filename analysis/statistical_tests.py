@@ -6,8 +6,7 @@ sys.path.insert(0, '.')
 from plot_config import *
 from scipy import stats
 
-TASKS = ['cheetah-run', 'walker-walk', 'walker-run', 'humanoid-walk',
-         'humanoid-run', 'dog-walk', 'dog-run']
+TASKS = ['cheetah-run', 'walker-run', 'quadruped-run', 'humanoid-run', 'dog-run']
 
 METHODS = {
     'tdmpc2': {'main': 'tdmpc2_{task}', 'validate': 'validate_baseline_{task}'},

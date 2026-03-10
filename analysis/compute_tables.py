@@ -7,12 +7,11 @@ import sys
 sys.path.insert(0, '.')
 from plot_config import *
 
-TASKS = ['cheetah-run', 'walker-walk', 'walker-run', 'humanoid-walk',
-         'humanoid-run', 'dog-walk', 'dog-run']
+TASKS = ['cheetah-run', 'walker-run', 'quadruped-run', 'humanoid-run', 'dog-run']
 
 METHODS = {
     'tdmpc2': {'main': 'tdmpc2_{task}', 'validate': 'validate_baseline_{task}'},
-    'freeguide_qev': {'main': 'freeguide_qev_{task}', 'validate': None},
+    'tdmpc2_rnd': {'main': 'tdmpc2_rnd_{task}', 'validate': None},
     'freeguide': {'main': 'freeguide_{task}', 'validate': 'validate_freeguide_{task}'},
 }
 

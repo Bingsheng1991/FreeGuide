@@ -36,8 +36,8 @@ def load_train_log(task, seed, exp_name):
 def main():
     fig, axes = plt.subplots(1, 3, figsize=(15, 4))
 
-    task = 'humanoid-walk'
-    exp_name = 'freeguide_humanoid-walk'
+    task = 'humanoid-run'
+    exp_name = 'freeguide_humanoid-run'
 
     # Try to load data
     has_data = False
@@ -49,7 +49,7 @@ def main():
 
     if not has_data:
         # Also try validation experiments
-        exp_name = 'validate_freeguide_humanoid-walk'
+        exp_name = 'validate_freeguide_humanoid-run'
         for seed in [1]:
             data = load_train_log(task, seed, exp_name)
             if data is not None:
@@ -62,7 +62,7 @@ def main():
                    ha='center', va='center', transform=ax.transAxes, fontsize=12)
     else:
         axes[0].plot(data['step'], data['info_gain_edd'], color=COLORS['freeguide'], label='EDD')
-        axes[0].plot(data['step'], data['info_gain_qev'], color=COLORS['freeguide_qev'], label='QEV')
+        axes[0].plot(data['step'], data['info_gain_qev'], color=COLORS['tdmpc2_rnd'], label='QEV')
         axes[0].set_ylabel('Information Gain')
         axes[0].legend()
 
