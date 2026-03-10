@@ -54,17 +54,17 @@ echo "=== P1: Main Experiments (75 runs) ==="
 for METHOD in tdmpc2 tdmpc2_rnd freeguide; do
     for TASK in cheetah-run walker-run quadruped-run humanoid-run dog-run; do
         for SEED in 1 2 3 4 5; do
-            check_exp "${METHOD}_${TASK}_s${SEED}" "$TASK" "$SEED"
+            check_exp "${METHOD}_${TASK}" "$TASK" "$SEED"
         done
     done
 done
 
 echo ""
 echo "=== P2: Component Ablations (18 runs) ==="
-for VARIANT in ablation_qev_only ablation_edd_only ablation_fixed_beta03; do
+for VARIANT in ablation_qev_only ablation_edd_only ablation_fixed_beta_01 ablation_fixed_beta_03 ablation_fixed_beta_05; do
     for TASK in walker-run humanoid-run; do
         for SEED in 1 2 3; do
-            check_exp "${VARIANT}_${TASK}_s${SEED}" "$TASK" "$SEED"
+            check_exp "${VARIANT}_${TASK}" "$TASK" "$SEED"
         done
     done
 done
@@ -73,7 +73,7 @@ echo ""
 echo "=== P2: Ensemble K Ablations (6 runs) ==="
 for K in 2 5; do
     for SEED in 1 2 3; do
-        check_exp "ensemble_K${K}_humanoid-run_s${SEED}" "humanoid-run" "$SEED"
+        check_exp "ablation_ensemble_K${K}_walker-run" "walker-run" "$SEED"
     done
 done
 

@@ -17,8 +17,12 @@ def main():
     stds = []
     labels = []
 
-    # Baseline
-    bl_dfs = load_data(TASK, f'ablation_tdmpc2_{TASK}', SEEDS)
+    # Baseline (try P1 name first, then ablation prefix)
+    bl_dfs = load_data(TASK, f'tdmpc2_{TASK}', SEEDS)
+    if not bl_dfs:
+        bl_dfs = load_data(TASK, f'ablation_tdmpc2_{TASK}', SEEDS)
+    if not bl_dfs:
+        bl_dfs = load_data(TASK, f'validate_baseline_{TASK}', SEEDS)
     if bl_dfs:
         finals = [df['episode_reward'].iloc[-1] for df in bl_dfs]
         means.append(np.mean(finals))

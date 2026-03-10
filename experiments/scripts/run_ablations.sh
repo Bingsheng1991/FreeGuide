@@ -15,7 +15,11 @@
 #
 # Ensemble K ablation (walker-run only): K=2,3,5 x seeds=1,2,3
 #
-# Total: 7 variants x 2 tasks x 3 seeds + 3 K values x 3 seeds = 42 + 9 = 51 experiments
+# Ablation-only variants: 5 x 2 tasks x 3 seeds = 30 experiments
+# + Ensemble K: 3 values x 3 seeds = 9 experiments
+# Total new: 39 experiments
+# Note: tdmpc2 baseline and full freeguide are reused from P1 main experiments
+#       (exp_name=tdmpc2_{task} and freeguide_{task}, same seeds/hyperparams)
 
 set -e
 eval "$(conda shell.bash hook 2>/dev/null)"
@@ -49,11 +53,9 @@ run_experiment() {
 }
 
 echo "=== Component Ablations ==="
+echo "(tdmpc2 baseline and full freeguide reused from P1: exp_name=tdmpc2_{task} / freeguide_{task})"
 for task in ${ABLATION_TASKS}; do
     for seed in ${SEEDS}; do
-        # Baseline
-        run_experiment ${task} tdmpc2 ${seed} "freeguide.enabled=false"
-
         # QEV only
         run_experiment ${task} qev_only ${seed} \
             "freeguide.enabled=true freeguide.use_edd=false freeguide.use_qev=true freeguide.use_adaptive_beta=true"
@@ -73,10 +75,6 @@ for task in ${ABLATION_TASKS}; do
         # Fixed beta=0.5
         run_experiment ${task} fixed_beta_05 ${seed} \
             "freeguide.enabled=true freeguide.use_adaptive_beta=false freeguide.beta_init=0.5"
-
-        # Full FreeGuide
-        run_experiment ${task} freeguide ${seed} \
-            "freeguide.enabled=true"
     done
 done
 
