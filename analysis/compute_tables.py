@@ -64,7 +64,7 @@ def main():
         f.write('\\label{tab:main_results}\n')
         f.write('\\begin{tabular}{lccc}\n')
         f.write('\\toprule\n')
-        f.write('Task & TD-MPC2 & FreeGuide-QEV & FreeGuide \\\\\n')
+        f.write('Task & TD-MPC2 & TD-MPC2 + RND & FreeGuide \\\\\n')
         f.write('\\midrule\n')
         for row in rows:
             f.write(' & '.join(row) + ' \\\\\n')
