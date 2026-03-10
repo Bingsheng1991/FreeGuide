@@ -51,7 +51,7 @@ check_exp() {
 }
 
 echo "=== P1: Main Experiments (75 runs) ==="
-for METHOD in tdmpc2 rnd freeguide; do
+for METHOD in tdmpc2 tdmpc2_rnd freeguide; do
     for TASK in cheetah-run walker-run quadruped-run humanoid-run dog-run; do
         for SEED in 1 2 3 4 5; do
             check_exp "${METHOD}_${TASK}_s${SEED}" "$TASK" "$SEED"

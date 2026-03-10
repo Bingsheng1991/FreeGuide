@@ -284,10 +284,15 @@ class AdaptiveBeta:
 - `freeguide/ensemble_loss`
 - `freeguide/ig_running_mean`
 - `freeguide/ig_running_std`
-- `reward_prediction_loss`（世界模型 reward head 的训练 loss，**Fig 5 分析需要**）
-- `wall_clock_time`（累计训练时间，**Table 2 需要**）
+- `reward_loss`（世界模型 reward head 的训练 loss，**Fig 5 分析需要**）
+- `elapsed_time`（累计训练时间，**Table 2 需要**）
 
-**注意**：`reward_prediction_loss` 和 `wall_clock_time` 对所有方法（TD-MPC2, +RND, FreeGuide）都要记录，不仅仅是 FreeGuide。
+**注意**：`reward_loss` 和 `elapsed_time` 对所有方法（TD-MPC2, +RND, FreeGuide）都要记录，不仅仅是 FreeGuide。
+
+**Latent State Dump**（Fig 5b 需要）：
+训练过程中每 100K 步自动保存一批 latent states 到 `{work_dir}/latent_states/latent_{step}.npz`。
+文件包含 `z`（encoder 输出，shape `[B, latent_dim]`）和 `step`。
+Phase 4 的 `plot_reward_vs_planning.py` 会用 `latent_500000.npz` 做 PCA 2D 投影对比 TD-MPC2 vs FreeGuide 的 latent coverage。
 
 ### 1.6 RND Baseline 实现
 
@@ -429,7 +434,7 @@ pip install dm_control mujoco hydra-core omegaconf wandb matplotlib seaborn pand
 - `reward_prediction_loss`（世界模型的 reward head 训练 loss，**Fig 5 需要**）
 - `wall_clock_time`（累计训练时间）
 
-如果 `reward_prediction_loss` 还没有被 log，在代码中加上再同步到服务器。
+如果 `reward_loss` 还没有被 log，在代码中加上再同步到服务器。
 
 ### 2.2 实验总览与优先级
 
@@ -517,6 +522,11 @@ GPU 2: cheetah-run 的实验 + P2 消融实验
 ### 2.4 生成实验脚本
 
 生成以下脚本到 `experiments/scripts/`：
+
+**所有实验的公共参数**：
+```
+steps=3000000 enable_wandb=false wandb_project=freeguide compile=true save_csv=true save_video=false eval_freq=50000
+```
 
 **`run_p1_main.sh`**：P1 全部 75 个实验
 - 3 张 GPU 各分配任务，nohup 后台运行

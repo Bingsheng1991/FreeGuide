@@ -20,7 +20,7 @@ experiments/SERVER_EXPERIMENT_GUIDE.md
    - 验证环境：跑 5000 步 walker-run 确认无报错
 
 2. **按优先级启动 P1 主实验**（Part 2，共 75 runs）
-   - 3 个方法（tdmpc2, rnd, freeguide）× 5 个任务 × 5 seeds
+   - 3 个方法（tdmpc2, tdmpc2_rnd, freeguide）× 5 个任务 × 5 seeds
    - 按文档中的 GPU 分配方案和批次顺序启动
    - 每张 GPU 同时并行 4 个实验
 
