@@ -34,8 +34,18 @@ def main():
         labels.append('TD-MPC2\n(no data)')
 
     for K in K_VALUES:
-        exp_name = f'ablation_ensemble_K{K}_{TASK}'
-        dfs = load_data(TASK, exp_name, SEEDS)
+        # K=3 is the default, reuse P1 freeguide experiment
+        if K == 3:
+            candidates = [f'freeguide_{TASK}', f'ablation_ensemble_K3_{TASK}',
+                          f'validate_freeguide_{TASK}']
+        else:
+            candidates = [f'ablation_ensemble_K{K}_{TASK}',
+                          f'ensemble_K{K}_{TASK}']
+        dfs = None
+        for name in candidates:
+            dfs = load_data(TASK, name, SEEDS)
+            if dfs:
+                break
         if dfs:
             finals = [df['episode_reward'].iloc[-1] for df in dfs]
             means.append(np.mean(finals))
