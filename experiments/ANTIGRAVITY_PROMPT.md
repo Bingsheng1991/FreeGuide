@@ -24,8 +24,8 @@ experiments/SERVER_EXPERIMENT_GUIDE.md
    - 按文档中的 GPU 分配方案和批次顺序启动
    - 每张 GPU 同时并行 4 个实验
 
-3. **P1 跑完后启动 P2 消融实验**（Part 3，共 24 runs）
-   - 18 个组件消融 + 6 个 Ensemble K 消融
+3. **P1 跑完后启动 P2 消融实验**（Part 3，共 36 runs）
+   - 30 个组件消融 + 6 个 Ensemble K 消融
    - tdmpc2 和 freeguide 的 walker-run/humanoid-run 结果复用 P1
 
 4. **定期检查实验进度**
