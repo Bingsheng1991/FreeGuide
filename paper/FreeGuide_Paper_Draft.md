@@ -357,7 +357,7 @@ Notably, **FreeGuide-QEV** uses zero additional parameters (leveraging the exist
 
 #### 4.3.3 Number of Ensemble Heads
 
-**Experiment.** Vary $K \in \{2, 3, 5\}$ on Humanoid-Run (the task where FreeGuide's advantage is largest). 3 seeds, 3M steps.
+**Experiment.** Vary $K \in \{2, 3, 5\}$ on Walker-Run. 3 seeds, 3M steps.
 
 **Fig. 7:** Performance vs. K bar chart.
 

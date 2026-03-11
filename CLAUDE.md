@@ -597,7 +597,7 @@ echo "$(date)" > /home/miller/Desktop/FreeGuide/phase3.done
 | `plot_dof_scaling.py` | `fig4_dof_scaling.pdf` | Fig 4 | P1 | X 轴 DoF，Y 轴 sample efficiency 提升 %。两条线：FreeGuide 和 +RND |
 | `plot_reward_vs_planning.py` | `fig5_reward_vs_planning.pdf` | **Fig 5** | P1 | **(a)** reward prediction loss over training: 3 条线（TD-MPC2 世界模型学真实 reward，+RND 世界模型学 distorted reward，FreeGuide 世界模型学真实 reward）→ 预期 FreeGuide ≈ TD-MPC2 < +RND。**(b)** latent state coverage heatmap at 500K steps: PCA 2D 投影，TD-MPC2 vs FreeGuide |
 | `plot_ablations.py` | `fig6_ablations.pdf` | Fig 6 | P2 | 消融 learning curve (2×1: walker-run + humanoid-run)，5 条线 |
-| `plot_ensemble_k.py` | `fig7_ensemble_k.pdf` | Fig 7 | P2 | K 敏感性 bar chart (humanoid-run)，K=2,3,5 |
+| `plot_ensemble_k.py` | `fig7_ensemble_k.pdf` | Fig 7 | P2 | K 敏感性 bar chart (walker-run)，K=2,3,5 |
 | `plot_info_dynamics.py` | `fig8_dynamics.pdf` | Fig 8 | P1 | 三面板：(a) info_gain_ema (b) beta (c) ensemble_loss，在全部 5 个任务上画（每个任务一条线或选 humanoid-run 为主 + 其他任务为辅），5 seeds 均值 + CI |
 | `compute_tables.py` | `table1.md`, `table2.md` | Table 1,2 | P1 | 主结果表 + wall-clock overhead 表 |
 | `statistical_tests.py` | `stats.md` | — | P1 | Welch t-test + Cohen's d |

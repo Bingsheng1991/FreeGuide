@@ -30,8 +30,12 @@ class WorldModel(nn.Module):
 		self._termination = layers.mlp(cfg.latent_dim + cfg.task_dim, 2*[cfg.mlp_dim], 1) if cfg.episodic else None
 		self._pi = layers.mlp(cfg.latent_dim + cfg.task_dim, 2*[cfg.mlp_dim], 2*cfg.action_dim)
 		self._Qs = layers.Ensemble([layers.mlp(cfg.latent_dim + cfg.action_dim + cfg.task_dim, 2*[cfg.mlp_dim], max(cfg.num_bins, 1), dropout=cfg.dropout) for _ in range(cfg.num_q)])
-		# FreeGuide: ensemble dynamics heads
-		if self._freeguide_cfg.get('enabled', False):
+		# FreeGuide: ensemble dynamics heads (only when EDD is used)
+		self._has_dynamics_ensemble = (
+			self._freeguide_cfg.get('enabled', False) and
+			self._freeguide_cfg.get('use_edd', True)
+		)
+		if self._has_dynamics_ensemble:
 			K = self._freeguide_cfg['ensemble_K']
 			self._dynamics_ensemble = nn.ModuleList([
 				nn.Sequential(

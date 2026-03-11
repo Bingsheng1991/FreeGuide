@@ -21,7 +21,7 @@ METHODS_VALIDATE = {
 
 
 def main():
-    fig, axes = plt.subplots(2, 4, figsize=(16, 7))
+    fig, axes = plt.subplots(2, 3, figsize=(14, 7))
     axes = axes.flatten()
 
     for i, task in enumerate(TASKS):
@@ -43,7 +43,7 @@ def main():
 
         plot_learning_curve(ax, task, methods)
 
-    # Hide empty subplot
+    # Hide empty subplot (6th subplot in 2x3 grid, only 5 tasks)
     axes[-1].set_visible(False)
 
     fig.suptitle('FreeGuide vs TD-MPC2: DMControl Benchmark', fontsize=14, fontweight='bold')

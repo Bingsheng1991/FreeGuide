@@ -69,11 +69,13 @@ class TDMPC2(torch.nn.Module):
 		self.optim = torch.optim.Adam(optim_groups, lr=self.cfg.lr, capturable=True)
 		self.pi_optim = torch.optim.Adam(self.model._pi.parameters(), lr=self.cfg.lr, eps=1e-5, capturable=True)
 
-		# FreeGuide: separate optimizer for ensemble dynamics heads
+		# FreeGuide: separate optimizer for ensemble dynamics heads (only when EDD is used)
 		if self._freeguide_enabled:
-			self.ensemble_optim = torch.optim.Adam(
-				self.model._dynamics_ensemble.parameters(), lr=self.cfg.lr
-			)
+			self._has_ensemble = getattr(self.model, '_has_dynamics_ensemble', False)
+			if self._has_ensemble:
+				self.ensemble_optim = torch.optim.Adam(
+					self.model._dynamics_ensemble.parameters(), lr=self.cfg.lr
+				)
 			self.adaptive_beta = AdaptiveBeta(cfg)
 			# Running normalization stats for info gain
 			self._ig_mean = 0.0
@@ -116,7 +118,9 @@ class TDMPC2(torch.nn.Module):
 		print('Episode length:', cfg.episode_length)
 		print('Discount factor:', self.discount)
 		if self._freeguide_enabled:
-			print(f'FreeGuide enabled: K={self._freeguide_cfg["ensemble_K"]}, '
+			edd_str = f'K={self._freeguide_cfg["ensemble_K"]}' if self._has_ensemble else 'off'
+			print(f'FreeGuide enabled: EDD={edd_str}, '
+			      f'QEV={"on" if self._freeguide_cfg["use_qev"] else "off"}, '
 			      f'alpha={self._freeguide_cfg["alpha"]}, '
 			      f'beta_init={self._freeguide_cfg["beta_init"]}')
 		if self._rnd_enabled:
@@ -238,8 +242,12 @@ class TDMPC2(torch.nn.Module):
 		for t in range(self.cfg.horizon):
 			reward = math.two_hot_inv(self.model.reward(z, actions[t], task), self.cfg)
 
-			# Use ensemble for next state prediction + disagreement
-			z_next, edd = self.model.ensemble_dynamics(z, actions[t], task)
+			# Next state prediction: use ensemble mean if available, else main dynamics
+			edd = torch.zeros(self.cfg.num_samples, device=z.device)
+			if self._has_ensemble:
+				z_next, edd = self.model.ensemble_dynamics(z, actions[t], task)
+			else:
+				z_next = self.model.next(z, actions[t], task)
 
 			# Q-value ensemble variance (epistemic uncertainty in value)
 			qev = torch.zeros(self.cfg.num_samples, device=z.device)
@@ -250,7 +258,7 @@ class TDMPC2(torch.nn.Module):
 
 			# Combine raw info gain
 			ig_raw = torch.zeros(self.cfg.num_samples, device=z.device)
-			if fg['use_edd']:
+			if fg['use_edd'] and self._has_ensemble:
 				ig_raw = ig_raw + edd
 			if fg['use_qev']:
 				ig_raw = ig_raw + fg['alpha'] * qev
@@ -265,7 +273,7 @@ class TDMPC2(torch.nn.Module):
 
 			discount_update = self.discount[torch.tensor(task)] if self.cfg.multitask else self.discount
 			discount = discount * discount_update
-			z = z_next  # Use ensemble mean for state transition (paper Algorithm 1, line 26)
+			z = z_next
 			if self.cfg.episodic:
 				termination = torch.clip(termination + (self.model.termination(z, task) > 0.5).float(), max=1.)
 
@@ -518,9 +526,9 @@ class TDMPC2(torch.nn.Module):
 		self.optim.step()
 		self.optim.zero_grad(set_to_none=True)
 
-		# FreeGuide: train ensemble dynamics heads
+		# FreeGuide: train ensemble dynamics heads (only when EDD is used)
 		ensemble_loss_val = 0.0
-		if self._freeguide_enabled:
+		if self._freeguide_enabled and self._has_ensemble:
 			ensemble_loss_val = self._update_ensemble(obs, action, task)
 
 		# RND: train predictor network
