@@ -448,10 +448,8 @@ class TDMPC2(torch.nn.Module):
 		rnd_predictor_loss = None
 		if self._rnd_enabled:
 			with torch.no_grad():
-				# Encode observations to get latent states for RND
-				z_for_rnd = self.model.encode(obs[:-1], task)  # [horizon, B, D]
-				# Compute raw RND bonus per timestep
-				rnd_bonus_raw = self.model.rnd_bonus(z_for_rnd)  # [horizon, B, 1]
+				# Compute raw RND bonus on raw observations (not latent states)
+				rnd_bonus_raw = self.model.rnd_bonus(obs[:-1])  # [horizon, B, 1]
 				# Update running normalization (EMA)
 				batch_mean = rnd_bonus_raw.mean().item()
 				batch_std = rnd_bonus_raw.std().item() + 1e-8
@@ -619,11 +617,9 @@ class TDMPC2(torch.nn.Module):
 		}
 
 	def _update_rnd_predictor(self, obs, task):
-		"""Train RND predictor network to match fixed target network output."""
-		with torch.no_grad():
-			z = self.model.encode(obs[:-1], task)  # [horizon, B, D]
-		# Compute predictor loss
-		rnd_loss = self.model.rnd_loss(z)
+		"""Train RND predictor network to match fixed target on raw observations."""
+		# Compute predictor loss on raw observations (not latent states)
+		rnd_loss = self.model.rnd_loss(obs[:-1])
 		rnd_loss.backward()
 		torch.nn.utils.clip_grad_norm_(self.model._rnd_predictor.parameters(), self.cfg.grad_clip_norm)
 		self.rnd_optim.step()

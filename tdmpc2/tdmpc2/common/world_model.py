@@ -41,15 +41,17 @@ class WorldModel(nn.Module):
 				) for _ in range(K)
 			])
 		# RND: fixed random target network + trainable predictor network
+		# Operates on raw observations (not latent space) to avoid SimNorm collapse
 		if self._rnd_cfg.get('enabled', False):
-			rnd_hidden = 128
+			rnd_obs_dim = list(cfg.obs_shape.values())[0][0]
+			rnd_hidden = 256
 			self._rnd_target = nn.Sequential(
-				nn.Linear(cfg.latent_dim, rnd_hidden),
+				nn.Linear(rnd_obs_dim, rnd_hidden),
 				nn.ReLU(),
 				nn.Linear(rnd_hidden, rnd_hidden),
 			)
 			self._rnd_predictor = nn.Sequential(
-				nn.Linear(cfg.latent_dim, rnd_hidden),
+				nn.Linear(rnd_obs_dim, rnd_hidden),
 				nn.ReLU(),
 				nn.Linear(rnd_hidden, rnd_hidden),
 			)
@@ -164,31 +166,32 @@ class WorldModel(nn.Module):
 		disagree = ((preds - mean_pred.unsqueeze(0)) ** 2).mean(dim=(0, 2))  # [B]
 		return mean_pred, disagree
 
-	def rnd_bonus(self, z):
+	def rnd_bonus(self, obs):
 		"""
 		RND: compute exploration bonus as MSE between target and predictor outputs.
-		Target network is fixed (random); predictor is trained to match it.
+		Operates on raw observations (not latent states) to preserve novelty signal.
 		Args:
-			z (torch.Tensor): Latent state [B, D] or [T, B, D].
+			obs (torch.Tensor): Raw observation [B, obs_dim] or [T, B, obs_dim].
 		Returns:
 			bonus (torch.Tensor): Per-sample RND bonus [..., 1].
 		"""
-		target_out = self._rnd_target(z)
-		predictor_out = self._rnd_predictor(z)
+		target_out = self._rnd_target(obs)
+		predictor_out = self._rnd_predictor(obs)
 		bonus = ((target_out - predictor_out) ** 2).mean(dim=-1, keepdim=True)
 		return bonus
 
-	def rnd_loss(self, z):
+	def rnd_loss(self, obs):
 		"""
 		RND: compute predictor loss (predictor tries to match target output).
+		Operates on raw observations.
 		Args:
-			z (torch.Tensor): Latent state [B, D] or [T, B, D].
+			obs (torch.Tensor): Raw observation [B, obs_dim] or [T, B, obs_dim].
 		Returns:
 			loss (torch.Tensor): Scalar loss.
 		"""
 		with torch.no_grad():
-			target_out = self._rnd_target(z)
-		predictor_out = self._rnd_predictor(z)
+			target_out = self._rnd_target(obs)
+		predictor_out = self._rnd_predictor(obs)
 		return ((target_out - predictor_out) ** 2).mean()
 
 	def reward(self, z, a, task):
