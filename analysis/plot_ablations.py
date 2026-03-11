@@ -1,5 +1,5 @@
 """
-Figure 4: Ablation study — learning curves for ablation variants.
+Figure 6: Ablation study — learning curves for ablation variants.
 """
 import sys
 sys.path.insert(0, '.')
@@ -38,7 +38,7 @@ def main():
 
     fig.suptitle('Ablation Study', fontsize=14, fontweight='bold')
     fig.tight_layout()
-    save_fig(fig, 'fig4_ablations')
+    save_fig(fig, 'fig6_ablations')
 
 
 if __name__ == '__main__':

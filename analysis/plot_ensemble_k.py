@@ -1,5 +1,5 @@
 """
-Figure 5: Ensemble K sensitivity — bar chart of final performance.
+Figure 7: Ensemble K sensitivity — bar chart of final performance.
 """
 import sys
 sys.path.insert(0, '.')
@@ -66,7 +66,7 @@ def main():
     ax.grid(True, alpha=0.3, axis='y')
 
     fig.tight_layout()
-    save_fig(fig, 'fig5_ensemble_k')
+    save_fig(fig, 'fig7_ensemble_k')
 
 
 if __name__ == '__main__':

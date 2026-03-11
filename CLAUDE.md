@@ -522,8 +522,8 @@ GPU 2: cheetah-run 的实验 + P2 消融实验
 
 估计时间：
   P1: 75 runs / 12 slots × ~15h/run ≈ 4-5 天
-  P2: 24 runs / 12 slots × ~15h/run ≈ 1-2 天
-  总计：约 6-7 天
+  P2: 36 runs / 12 slots × ~15h/run ≈ 2-3 天
+  总计：约 7-8 天
 ```
 
 ### 2.4 生成实验脚本
@@ -542,9 +542,9 @@ steps=3000000 enable_wandb=false wandb_project=freeguide compile=true save_csv=t
 - 日志输出到 `logs/{exp_name}.log`
 - 实验结果输出到 `experiments/results/{exp_name}/`
 
-**`run_p2_ablations.sh`**：P2 全部 24 个实验
+**`run_p2_ablations.sh`**：P2 全部 36 个实验
 - 复用 P1 的 tdmpc2 和 freeguide 结果（检查 `experiments/results/` 下是否已有）
-- 只跑实际需要的 24 个新实验
+- 只跑实际需要的 36 个新实验
 
 **`check_progress.sh`**：检查实验进度
 - 扫描 `experiments/results/` 下所有 eval.csv
@@ -567,7 +567,7 @@ steps=3000000 enable_wandb=false wandb_project=freeguide compile=true save_csv=t
 echo "$(date)" > /home/miller/Desktop/FreeGuide/phase2.done
 ```
 
-当 P2 全部 24 个实验跑完后：
+当 P2 全部 36 个实验跑完后：
 ```bash
 echo "$(date)" > /home/miller/Desktop/FreeGuide/phase3.done
 ```

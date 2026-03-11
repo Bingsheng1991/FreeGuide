@@ -60,7 +60,7 @@ for METHOD in tdmpc2 tdmpc2_rnd freeguide; do
 done
 
 echo ""
-echo "=== P2: Component Ablations (18 runs) ==="
+echo "=== P2: Component Ablations (30 runs) ==="
 for VARIANT in ablation_qev_only ablation_edd_only ablation_fixed_beta_01 ablation_fixed_beta_03 ablation_fixed_beta_05; do
     for TASK in walker-run humanoid-run; do
         for SEED in 1 2 3; do
