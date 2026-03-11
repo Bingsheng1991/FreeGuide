@@ -187,20 +187,24 @@ freeguide:
 在世界模型类中添加：
 
 ```python
-# __init__ 中：
+# __init__ 中（使用 NormedLinear + SimNorm，与主 dynamics 架构一致）：
 if cfg.freeguide.enabled:
+    K = cfg.freeguide.ensemble_K
     self._dynamics_ensemble = nn.ModuleList([
         nn.Sequential(
-            nn.Linear(latent_dim + action_dim, mlp_dim),
-            nn.LayerNorm(mlp_dim),
-            nn.Mish(),
-            nn.Linear(mlp_dim, latent_dim)
-        ) for _ in range(cfg.freeguide.ensemble_K)
+            layers.NormedLinear(cfg.latent_dim + cfg.action_dim + cfg.task_dim, cfg.mlp_dim),
+            layers.NormedLinear(cfg.mlp_dim, cfg.mlp_dim),
+            layers.NormedLinear(cfg.mlp_dim, cfg.latent_dim, act=layers.SimNorm(cfg))
+        ) for _ in range(K)
     ])
 
 # 新方法：
-def ensemble_dynamics(self, z, a):
-    za = torch.cat([z, a], dim=-1)
+def ensemble_dynamics(self, z, a, task):
+    if self.cfg.multitask:
+        z_inp = self.task_emb(z, task)
+    else:
+        z_inp = z
+    za = torch.cat([z_inp, a], dim=-1)
     preds = torch.stack([h(za) for h in self._dynamics_ensemble], dim=0)  # [K,B,D]
     mean_pred = preds.mean(0)       # [B,D]
     disagree = ((preds - mean_pred.unsqueeze(0))**2).mean(dim=(0,2))  # [B]
