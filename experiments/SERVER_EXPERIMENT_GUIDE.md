@@ -684,7 +684,11 @@ Note: seed is NOT part of exp_name. It is captured in the directory path: logs/{
 
 ### Time estimates
 
-- Each 3M step experiment takes ~20-30 hours on A800
-- 4 parallel experiments per GPU = ~4-8 days per batch of 15
-- P1 total (75 runs): ~15-20 days with 3 GPUs
-- P2 total (36 runs): ~7-10 days after P1
+- Each 3M step experiment takes ~4-13 hours on A800 (varies by task DoF)
+  - cheetah-run / walker-run (6 DoF): ~4-5h
+  - quadruped-run (12 DoF): ~6-7h
+  - humanoid-run (21 DoF): ~8-10h
+  - dog-run (38 DoF): ~10-13h
+- 4 parallel experiments per GPU, 3 GPUs = 12 parallel slots
+- P1 total (75 runs): ~5-7 days with 3 GPUs
+- P2 total (36 runs): ~1-2 days after P1

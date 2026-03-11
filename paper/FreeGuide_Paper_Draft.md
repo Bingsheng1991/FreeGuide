@@ -141,7 +141,7 @@ $$\mathcal{I}_{\text{EDD}}(\mathbf{z}, \mathbf{a}) = \frac{1}{K} \sum_{k=1}^K \|
 
 **Training.** Each dynamics head $d_k$ is trained with the same joint-embedding prediction loss as the original dynamics model, but with independent random initialization. Crucially, the ensemble heads are trained with a separate optimizer that updates *only* the ensemble parameters—gradients do not flow back through the shared encoder or affect the main dynamics model's training. All heads share the encoder $h$ (whose gradients come solely from the original TD-MPC2 objectives). The "main" dynamics model used for trajectory rollouts during planning is the ensemble mean $\bar{d}$.
 
-**Computational cost.** Each dynamics head is a 2-layer MLP (512 → 512 → 512) with SimNorm output matching the main dynamics. With $K=3$ heads, this adds approximately 2.5M parameters (47% overhead on the 5.4M model), and negligible wall-clock overhead since the heads are evaluated in a single batched forward pass.
+**Computational cost.** Each dynamics head is a 2-layer MLP (512 → 512 → 512) with SimNorm output matching the main dynamics. With $K=3$ heads, this adds approximately 2.4M parameters (48% overhead on the 5.0M base model), and negligible wall-clock overhead since the heads are evaluated in a single batched forward pass.
 
 #### 3.2.2 Method B: Q-Ensemble Variance (QEV)
 
@@ -271,8 +271,8 @@ We compare three methods that address the same question—how to balance exploit
 | Method | What it modifies | Extra Params | Description |
 |--------|-----------------|-------------|-------------|
 | **TD-MPC2** | Nothing (baseline) | 0 | Standard MPPI scoring with cumulative reward only |
-| **TD-MPC2 + RND** | **Reward signal** | ~0.2M | Random Network Distillation (Burda et al., 2019): adds an exploration bonus to the reward used for world model training. The world model learns a *distorted* reward landscape that blends task reward with novelty bonus. |
-| **FreeGuide** (ours) | **Planning objective** | ~2.5M | Augments MPPI trajectory scoring with epistemic value. The world model trains on *unmodified* task rewards; exploration is injected only at decision time. |
+| **TD-MPC2 + RND** | **Reward signal** | ~0.1M | Random Network Distillation (Burda et al., 2019): adds an exploration bonus to the reward used for world model training. The world model learns a *distorted* reward landscape that blends task reward with novelty bonus. |
+| **FreeGuide** (ours) | **Planning objective** | ~2.4M | Augments MPPI trajectory scoring with epistemic value. The world model trains on *unmodified* task rewards; exploration is injected only at decision time. |
 
 This comparison isolates a key design question: **is it better to inject exploration into the reward signal (modifying what the world model learns) or into the planning objective (modifying how the world model is used)?** We hypothesize that modifying the planning objective is cleaner, as it preserves the fidelity of the learned reward landscape.
 
@@ -347,13 +347,15 @@ Beyond aggregate performance, we examine *how* RND and FreeGuide differ qualitat
 |---------|-----|-----|------------|-------------|
 | TD-MPC2 (β=0) | ✗ | ✗ | ✗ | 0 |
 | FreeGuide-QEV | ✗ | ✓ | ✓ | 0 |
-| FreeGuide-EDD | ✓ | ✗ | ✓ | ~2.5M |
-| FreeGuide-Fixed (β=0.3) | ✓ | ✓ | ✗ | ~2.5M |
-| FreeGuide (full) | ✓ | ✓ | ✓ | ~2.5M |
+| FreeGuide-EDD | ✓ | ✗ | ✓ | ~2.4M |
+| FreeGuide-Fixed (β=0.1) | ✓ | ✓ | ✗ | ~2.4M |
+| FreeGuide-Fixed (β=0.3) | ✓ | ✓ | ✗ | ~2.4M |
+| FreeGuide-Fixed (β=0.5) | ✓ | ✓ | ✗ | ~2.4M |
+| FreeGuide (full) | ✓ | ✓ | ✓ | ~2.4M |
 
 **Fig. 6:** Ablation learning curves (2×1 subplot: Walker-Run and Humanoid-Run).
 
-Notably, **FreeGuide-QEV** uses zero additional parameters (leveraging the existing Q-ensemble in TD-MPC2) and serves as a minimal-cost variant.
+Notably, **FreeGuide-QEV** uses zero additional parameters (leveraging the existing Q-ensemble in TD-MPC2) and serves as a minimal-cost variant. The three fixed-β variants test the sensitivity of performance to the exploration weight, validating the benefit of the adaptive mechanism.
 
 #### 4.3.3 Number of Ensemble Heads
 
@@ -379,8 +381,8 @@ This pattern mirrors the "exploration-to-exploitation" transition observed in bi
 | Method | Time (h) | Overhead vs. TD-MPC2 | Extra Params |
 |--------|----------|---------------------|-------------|
 | TD-MPC2 | **XX.X** | — | 0 |
-| TD-MPC2 + RND | **XX.X** | ~X% | ~0.2M |
-| FreeGuide (K=3) | **XX.X** | ~X% | ~2.5M |
+| TD-MPC2 + RND | **XX.X** | ~X% | ~0.1M |
+| FreeGuide (K=3) | **XX.X** | ~X% | ~2.4M |
 
 <!-- TODO: fill with actual timing data -->
 

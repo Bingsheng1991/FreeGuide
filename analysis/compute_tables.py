@@ -16,9 +16,9 @@ METHODS = {
 }
 
 PARAM_COUNTS = {
-    'tdmpc2': 5.4,
-    'tdmpc2_rnd': 5.5,
-    'freeguide': 7.9,
+    'tdmpc2': 5.0,
+    'tdmpc2_rnd': 5.0,
+    'freeguide': 7.3,
 }
 
 
