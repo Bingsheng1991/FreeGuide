@@ -8,6 +8,8 @@ from pathlib import Path
 SCRIPTS = [
     'plot_main_results.py',
     'plot_sample_efficiency.py',
+    'plot_dof_scaling.py',
+    'plot_reward_vs_planning.py',
     'plot_ablations.py',
     'plot_ensemble_k.py',
     'plot_info_dynamics.py',

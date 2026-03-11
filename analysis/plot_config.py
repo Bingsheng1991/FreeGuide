@@ -31,7 +31,9 @@ COLORS = {
     'freeguide': '#C44E52',
     'qev_only': '#DD8452',
     'edd_only': '#55A868',
+    'fixed_beta_01': '#A3938C',
     'fixed_beta_03': '#937860',
+    'fixed_beta_05': '#6B5B4B',
 }
 
 METHOD_LABELS = {
@@ -40,7 +42,9 @@ METHOD_LABELS = {
     'freeguide': 'FreeGuide',
     'qev_only': 'QEV Only',
     'edd_only': 'EDD Only',
+    'fixed_beta_01': r'Fixed $\beta$=0.1',
     'fixed_beta_03': r'Fixed $\beta$=0.3',
+    'fixed_beta_05': r'Fixed $\beta$=0.5',
 }
 
 TASK_LABELS = {

@@ -490,9 +490,9 @@ Seeds：1 2 3
 可以直接复用 P1 的 seed=1,2,3 结果，实际只需额外跑：
   5 variants (qev_only, edd_only, fixed_beta_01, fixed_beta_03, fixed_beta_05) × 2 tasks × 3 seeds = 30 runs
 
-Ensemble K 消融（humanoid-run only）：
+Ensemble K 消融（walker-run only）：
   K = 2, 3, 5  seeds=1,2,3 = 9 runs × 3M steps
-  K=3 可以复用 P1 的 freeguide humanoid-run seed=1,2,3
+  K=3 可以复用 P1 的 freeguide walker-run seed=1,2,3
   实际只需额外跑：2 K-values × 3 seeds = 6 runs
 
 P2 实际新增 runs：30 + 6 = 36 runs
