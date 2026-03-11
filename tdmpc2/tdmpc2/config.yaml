@@ -79,7 +79,7 @@ seed: 1
 # rnd (Random Network Distillation baseline)
 rnd:
   enabled: false
-  bonus_coef: 0.1
+  bonus_coef: 0.01
 
 # freeguide
 freeguide:

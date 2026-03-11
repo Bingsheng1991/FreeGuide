@@ -336,7 +336,7 @@ if cfg.rnd.enabled:
 ```yaml
 rnd:
   enabled: false
-  bonus_coef: 0.1
+  bonus_coef: 0.01
 ```
 
 **互斥约束**：`rnd.enabled` 和 `freeguide.enabled` 不能同时为 true。加一个 assert 检查。
