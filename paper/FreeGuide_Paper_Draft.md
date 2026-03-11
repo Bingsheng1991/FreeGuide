@@ -113,9 +113,15 @@ We first establish the formal relationship between MPPI scoring and EFE minimiza
 
 This motivates augmenting the MPPI score with an epistemic value term:
 
-$$J_{\text{FreeGuide}}(\tau) = \underbrace{\sum_{i=0}^{H-1} \gamma^i \hat{r}_i + \gamma^H \hat{q}_H}_{\text{Extrinsic value (standard MPPI)}} + \underbrace{\beta \sum_{i=0}^{H-1} \gamma^i \mathcal{I}(\mathbf{z}_i, \mathbf{a}_i)}_{\text{Epistemic value (information gain)}}$$
+$$J_{\text{FreeGuide}}(\tau) = \underbrace{\sum_{i=0}^{H-1} \gamma^i \hat{r}_i + \gamma^H \hat{q}_H}_{J_{\text{ext}}\text{ (standard MPPI)}} + \beta \cdot \underbrace{\text{scale}(J_{\text{epi}})}_{\text{Epistemic value}}$$
 
-where $\mathcal{I}(\mathbf{z}, \mathbf{a})$ approximates the information gain at each planning step and $\beta \geq 0$ controls the exploration-exploitation balance. When $\beta = 0$, FreeGuide reduces to standard MPPI.
+where $J_{\text{epi}} = \sum_{i=0}^{H-1} \gamma^i \mathcal{I}(\mathbf{z}_i, \mathbf{a}_i)$ is the raw epistemic value, $\mathcal{I}(\mathbf{z}, \mathbf{a})$ approximates the information gain at each planning step, and $\beta \geq 0$ controls the exploration-exploitation balance. When $\beta = 0$, FreeGuide reduces to standard MPPI.
+
+**Variance-matched scaling.** Naively adding the raw epistemic term to the extrinsic value is problematic: the two quantities have different scales and units, so their relative magnitude is arbitrary. We apply a variance-matched scaling that ensures the epistemic term has comparable influence on MPPI's softmax weighting:
+
+$$\text{scale}(J_{\text{epi}}) = \frac{J_{\text{epi}} - \mu(J_{\text{epi}})}{\sigma(J_{\text{epi}}) + \epsilon} \cdot \sigma_{\text{target}}$$
+
+where $\mu$ and $\sigma$ are computed across the $N$ candidate trajectories, and $\sigma_{\text{target}} = \max(\sigma(J_{\text{ext}}),\; 0.01 \cdot |\mu(J_{\text{ext}})| + \epsilon)$. This zero-mean centering prevents the epistemic mean from shifting the trajectory ranking away from the extrinsic signal, while the variance matching ensures that the epistemic term produces meaningful differentiation between trajectories at a controlled scale. The floor term ensures epistemic value can still drive exploration when extrinsic variance is negligible (e.g., early in training).
 
 ### 3.2 Approximating Information Gain via Ensemble Disagreement
 
@@ -133,7 +139,7 @@ $$\mathcal{I}_{\text{EDD}}(\mathbf{z}, \mathbf{a}) = \frac{1}{K} \sum_{k=1}^K \|
 
 **Justification.** Under mild assumptions, ensemble disagreement is a consistent estimator of epistemic uncertainty in neural networks (Lakshminarayanan et al., 2017). High disagreement indicates that the dynamics in this region of the latent space are poorly learned—precisely the states where information gain from visiting would be highest.
 
-**Training.** Each dynamics head $d_k$ is trained with the same joint-embedding prediction loss as the original dynamics model, but with independent random initialization. All heads share the encoder $h$ and are updated jointly. The "main" dynamics model used for trajectory rollouts during planning is the ensemble mean $\bar{d}$.
+**Training.** Each dynamics head $d_k$ is trained with the same joint-embedding prediction loss as the original dynamics model, but with independent random initialization. Crucially, the ensemble heads are trained with a separate optimizer that updates *only* the ensemble parameters—gradients do not flow back through the shared encoder or affect the main dynamics model's training. All heads share the encoder $h$ (whose gradients come solely from the original TD-MPC2 objectives). The "main" dynamics model used for trajectory rollouts during planning is the ensemble mean $\bar{d}$.
 
 **Computational cost.** Each dynamics head is a 2-layer MLP (512 → 512 → 512) with SimNorm output matching the main dynamics. With $K=3$ heads, this adds approximately 2.5M parameters (47% overhead on the 5.4M model), and negligible wall-clock overhead since the heads are evaluated in a single batched forward pass.
 
@@ -215,8 +221,8 @@ Output: Action a_t
 29:         q = mean_k[Q_k(z, a^n_{H-1})]
 30:         J_extrinsic += w · γ^H · q
 31:
-32:         // FreeGuide score
-33:         J^n = J_extrinsic + β · J_epistemic
+32:         // FreeGuide score (with variance-matched scaling, see §3.1)
+33:         J^n = J_extrinsic + β · scale(J_epistemic)
 34:     end for
 35:     // MPPI update: softmax weighting
 36:     weights w_n ∝ exp(J^n / λ)
