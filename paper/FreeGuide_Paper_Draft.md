@@ -276,7 +276,7 @@ We do not include SAC or DreamerV3 as baselines because Hansen et al. (2024) hav
 
 - **Base implementation**: Official TD-MPC2 codebase (github.com/nicklashansen/tdmpc2).
 - **FreeGuide**: $K=3$ ensemble dynamics heads (2-layer MLP, 512 hidden), sharing the encoder. QEV mixing $\alpha = 0.5$. Adaptive β: $\eta = 10^{-4}$, $\beta_{\min} = 0$, $\beta_{\max} = 1.0$, $\rho = 0.3$.
-- **RND**: Fixed random target network (latent_dim→128→ReLU→128) + trainable predictor (same architecture). Bonus coefficient 0.1, with running normalization.
+- **RND**: Fixed random target network (obs_dim→256→ReLU→256) + trainable predictor (same architecture), operating on raw observations to preserve novelty signal. Bonus coefficient 0.01, with running normalization.
 - **All other hyperparameters**: Identical to TD-MPC2 defaults (Table 5 of Hansen et al., 2024).
 - **Seeds**: 5 random seeds for all experiments.
 - **Hardware**: Single NVIDIA A800 80GB GPU per experiment.
@@ -415,6 +415,6 @@ Table 3: Full hyperparameter list for FreeGuide and RND baseline. Additions to T
 | **FreeGuide: β range [β_min, β_max]** | **[0, 1.0]** | **New** |
 | **FreeGuide: Target decay ratio ρ** | **0.3** | **New** |
 | **FreeGuide: EMA decay for I_bar** | **0.99** | **New** |
-| **RND: Target network** | **latent_dim → 128 → 128** | **Frozen at init** |
-| **RND: Predictor network** | **latent_dim → 128 → 128** | **Trainable** |
-| **RND: Bonus coefficient** | **0.1** | **New** |
+| **RND: Target network** | **obs_dim → 256 → ReLU → 256** | **Frozen at init, raw observations** |
+| **RND: Predictor network** | **obs_dim → 256 → ReLU → 256** | **Trainable, raw observations** |
+| **RND: Bonus coefficient** | **0.01** | **New** |
