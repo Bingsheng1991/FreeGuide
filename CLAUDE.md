@@ -472,7 +472,7 @@ Seeds：1 2 3 4 5
  → Fig 6, Fig 7
 ═══════════════════════════════════════════════════════
 
-组件消融：5 variants × 2 tasks × 3 seeds = 30 runs × 3M steps
+组件消融：7 variants × 2 tasks × 3 seeds = 42 runs × 3M steps
 
 任务：walker-run (6 DoF), humanoid-run (21 DoF)
 Seeds：1 2 3
@@ -481,19 +481,21 @@ Seeds：1 2 3
   tdmpc2:        freeguide.enabled=false
   qev_only:      enabled=true use_edd=false use_qev=true use_adaptive_beta=true
   edd_only:      enabled=true use_edd=true use_qev=false use_adaptive_beta=true
+  fixed_beta_01: enabled=true use_adaptive_beta=false beta_init=0.1
   fixed_beta_03: enabled=true use_adaptive_beta=false beta_init=0.3
+  fixed_beta_05: enabled=true use_adaptive_beta=false beta_init=0.5
   freeguide:     enabled=true（完整版）
 
 注意：tdmpc2 和 freeguide 的 walker-run/humanoid-run 已在 P1 中跑过，
 可以直接复用 P1 的 seed=1,2,3 结果，实际只需额外跑：
-  3 variants (qev_only, edd_only, fixed_beta_03) × 2 tasks × 3 seeds = 18 runs
+  5 variants (qev_only, edd_only, fixed_beta_01, fixed_beta_03, fixed_beta_05) × 2 tasks × 3 seeds = 30 runs
 
 Ensemble K 消融（humanoid-run only）：
   K = 2, 3, 5  seeds=1,2,3 = 9 runs × 3M steps
   K=3 可以复用 P1 的 freeguide humanoid-run seed=1,2,3
   实际只需额外跑：2 K-values × 3 seeds = 6 runs
 
-P2 实际新增 runs：18 + 6 = 24 runs
+P2 实际新增 runs：30 + 6 = 36 runs
 
 ═══════════════════════════════════════════════════════
  优先级 P3（P1 数据可用后就能做，纯分析无需额外实验）
@@ -506,7 +508,7 @@ P2 实际新增 runs：18 + 6 = 24 runs
   - Fig 8 Information dynamics：从 P1 全部 5 个任务的 FreeGuide 实验 log 提取 info_gain, beta, ensemble_loss
   - Table 2 Wall-clock overhead：从 P1 的 elapsed_time 计算
 
-总实际 runs：75 (P1) + 24 (P2) = 99 runs
+总实际 runs：75 (P1) + 36 (P2) = 111 runs
 ```
 
 ### 2.3 GPU 分配策略

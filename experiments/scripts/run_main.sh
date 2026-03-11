@@ -32,7 +32,7 @@ run_experiment() {
         task=${task} steps=${STEPS} seed=${seed} \
         ${fg_args} \
         exp_name=${exp_name} \
-        enable_wandb=false save_video=false compile=true \
+        enable_wandb=false wandb_project=freeguide save_video=false compile=true \
         eval_freq=${EVAL_FREQ} save_csv=true \
         > "${LOGDIR}/${exp_name}_seed${seed}.log" 2>&1
     echo "$(date): Finished ${exp_name} seed=${seed}"

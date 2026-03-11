@@ -13,11 +13,11 @@
 #   fixed_beta_05: enabled=true use_adaptive_beta=false beta_init=0.5
 #   freeguide:     enabled=true (full version)
 #
-# Ensemble K ablation (walker-run only): K=2,3,5 x seeds=1,2,3
+# Ensemble K ablation (walker-run only): K=2,5 x seeds=1,2,3 (K=3 reused from P1)
 #
 # Ablation-only variants: 5 x 2 tasks x 3 seeds = 30 experiments
-# + Ensemble K: 3 values x 3 seeds = 9 experiments
-# Total new: 39 experiments
+# + Ensemble K: 2 values x 3 seeds = 6 experiments
+# Total new: 36 experiments
 # Note: tdmpc2 baseline and full freeguide are reused from P1 main experiments
 #       (exp_name=tdmpc2_{task} and freeguide_{task}, same seeds/hyperparams)
 
@@ -80,7 +80,7 @@ done
 
 echo "=== Ensemble K Ablation (walker-run only) ==="
 for seed in ${SEEDS}; do
-    for K in 2 3 5; do
+    for K in 2 5; do  # K=3 reused from P1 freeguide results
         run_experiment walker-run "ensemble_K${K}" ${seed} \
             "freeguide.enabled=true freeguide.ensemble_K=${K}"
     done
