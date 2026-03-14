@@ -36,6 +36,9 @@ FreeGuide 在 TD-MPC2 的 MPPI 规划器中注入 Expected Free Energy 评分，
 - `check_progress.sh` 通过 `pgrep exp_name=...` 识别进程，会把同名不同 seed 的实验误算成都在跑；做状态汇报时要交叉参考 GPU 进程和 `train.csv`
 - `logs/failed_experiments.txt` 里如果出现早期调度试错留下的 `incomplete` 记录，不要直接当成 NaN/OOM 失败；必须结合当前日志和活跃进程二次确认
 - 在 Codex / IDE 终端环境里，如果执行器会在命令返回后回收后台子进程，则必须用**持久 PTY 会话**托管外层 orchestration shell；仅靠一次性 `nohup ... &` 可能留不住总控进程
+- **默认规则更新**：后续凡是在服务器上跑长时间实验、批量实验、自动串行推进实验，外层总控默认放在 `tmux` 里运行；不要再把服务器实验总控默认挂在一次性 IDE/agent 会话上
+- 推荐做法：`tmux new-session -d -s <session_name> 'bash ...'`
+- 单个训练进程仍然可以继续按协议用 `nohup python train.py ... &` 启动，但**总控层**默认归 `tmux`
 
 ## 下载源（必须遵守）
 

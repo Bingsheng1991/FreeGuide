@@ -35,6 +35,7 @@ experiments/SERVER_EXPERIMENT_GUIDE.md
 ## 执行规则
 
 - **所有训练用 `nohup` 后台运行，启动后立即返回，不要等待完成**
+- **服务器上的外层总控/批量调度默认放在 `tmux` 里运行**
 - 按照文档中的 GPU 分配方案分配任务（GPU 0/1/2）
 - 遇到报错自行根据文档中 Part 5（Fault Handling）的指南修复
 - **不要修改 `tdmpc2/` 下的源码**，只执行实验命令
@@ -42,6 +43,7 @@ experiments/SERVER_EXPERIMENT_GUIDE.md
 - 如果某个实验 NaN 崩溃，记录到 `logs/failed_experiments.txt` 然后继续
 - 每个 batch 用 `wait` 等前一批完成后再启动下一批
 - 如果 IDE / agent 终端会在命令返回后清理子进程，外层总控脚本必须运行在**持久 PTY / 持久会话**里；否则一次性 `nohup ... &` 可能无法保活总控
+- 默认做法：`tmux new-session -d -s <session_name> 'bash <controller_script>.sh'`
 
 ## 代码路径
 
@@ -58,5 +60,6 @@ experiments/SERVER_EXPERIMENT_GUIDE.md
   `tensordict`、`torchrl`、`termcolor`、`wandb`、`h5py`、`moviepy`、`requests[socks]`
 - 训练启动时可能出现 Gym 弃用警告；目前这是警告，不是阻塞错误
 - 汇报进度时不要只依赖 `check_progress.sh` 的 RUNNING 数量；要同时检查 GPU PID、`train.csv` 最新 step、以及实际日志
+- 当前服务器上的默认长期运行规则已经更新为：**总控进 `tmux`，训练子进程继续用 `nohup`**
 
 现在开始执行，从环境部署（Part 1）开始。

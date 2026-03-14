@@ -133,19 +133,36 @@ run_batch() {
   local gpu="$1"
   shift
   local specs=("$@")
-  local pids=()
 
   monitor_snapshot
   for spec in "${specs[@]}"; do
     IFS='|' read -r task seed exp_name extra_flags <<< "$spec"
     launch_train "$gpu" "$task" "$seed" "$exp_name" "$extra_flags"
-    if [ -n "$LAST_PID" ]; then
-      pids+=("$LAST_PID")
-    fi
   done
 
-  for pid in "${pids[@]}"; do
-    wait "$pid"
+  while true; do
+    local all_done=1
+    for spec in "${specs[@]}"; do
+      IFS='|' read -r task seed exp_name extra_flags <<< "$spec"
+      local eval_csv="$TRAIN_ROOT/logs/${task}/${seed}/${exp_name}/eval.csv"
+      local last_step="0"
+      if [ -f "$eval_csv" ]; then
+        last_step="$(tail -n 1 "$eval_csv" | cut -d',' -f1)"
+      fi
+      if awk "BEGIN {exit !($last_step >= 2900000)}"; then
+        continue
+      fi
+      if pgrep -f "python train.py task=${task} seed=${seed} exp_name=${exp_name}" > /dev/null 2>&1; then
+        all_done=0
+        break
+      fi
+      all_done=0
+      break
+    done
+    if [ "$all_done" -eq 1 ]; then
+      break
+    fi
+    sleep 60
   done
 
   for spec in "${specs[@]}"; do

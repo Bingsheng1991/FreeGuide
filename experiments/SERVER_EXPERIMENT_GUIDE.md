@@ -6,6 +6,7 @@
 > 3. If an experiment OOMs, restart it with `buffer_size=500000` added to the command.
 > 4. If an experiment crashes with NaN, log it to `logs/failed_experiments.txt` and continue.
 > 5. All commands must run inside `conda activate freeguide`.
+> 6. **Default server rule:** run the outer experiment controller in `tmux`; do not rely on a disposable IDE/agent shell to keep orchestration alive
 
 ## Server Notes (Validated On `/home/wbs/FreeGuide`)
 
@@ -28,7 +29,22 @@
 - `walker-run` 5000-step validation has been confirmed to run successfully on this machine
 - The `gym` deprecation warning may appear at process start; it is currently a warning only and has not blocked `dm_control` training
 - If your terminal runner automatically reaps child processes after the command returns, outer orchestration must be kept alive in a persistent PTY/session; plain one-shot `nohup ... &` from a disposable runner may not keep the controller alive
+- On this server, the default operational choice is now:
+  - keep **training commands** as `nohup python train.py ... &`
+  - keep the **outer orchestration / batch launcher** inside `tmux`
 - `check_progress.sh` is useful, but it matches only `exp_name`, so multiple seeds of the same experiment can be over-counted as RUNNING; always cross-check with `check_gpu.sh`, active PIDs, and `train.csv`
+
+### Recommended launcher pattern
+
+Use `tmux` for any multi-batch or long-running server experiment controller:
+
+```bash
+tmux new-session -d -s freeguide 'bash /home/wbs/FreeGuide/experiments/scripts/server_run_all.sh'
+tmux ls
+tmux attach -t freeguide
+```
+
+This does not replace `nohup` for individual training commands; it replaces the fragile practice of leaving the batch controller attached to an IDE / agent shell.
 
 ---
 
