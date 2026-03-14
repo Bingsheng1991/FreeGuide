@@ -41,11 +41,22 @@ experiments/SERVER_EXPERIMENT_GUIDE.md
 - 如果某个实验 OOM，加 `buffer_size=500000` 重跑
 - 如果某个实验 NaN 崩溃，记录到 `logs/failed_experiments.txt` 然后继续
 - 每个 batch 用 `wait` 等前一批完成后再启动下一批
+- 如果 IDE / agent 终端会在命令返回后清理子进程，外层总控脚本必须运行在**持久 PTY / 持久会话**里；否则一次性 `nohup ... &` 可能无法保活总控
 
 ## 代码路径
 
 代码应该已经通过 rsync 同步到了服务器。如果代码在非默认路径，请将文档中所有 `/home/miller/FreeGuide/` 替换为实际路径。
 
 训练脚本工作目录：`{项目根目录}/tdmpc2/tdmpc2/`
+
+## 当前服务器的已知现实情况（优先于通用假设）
+
+- 当前服务器实际项目根目录是：`/home/wbs/FreeGuide`
+- 当前同步版本的 `tdmpc2/` 目录没有 `setup.py` / `pyproject.toml`
+- 因此如果 `cd tdmpc2 && pip install -e .` 失败，不要卡住；直接在 `tdmpc2/tdmpc2/` 目录运行 `python train.py ...`
+- 当前服务器已经验证通过的额外依赖包括：
+  `tensordict`、`torchrl`、`termcolor`、`wandb`、`h5py`、`moviepy`、`requests[socks]`
+- 训练启动时可能出现 Gym 弃用警告；目前这是警告，不是阻塞错误
+- 汇报进度时不要只依赖 `check_progress.sh` 的 RUNNING 数量；要同时检查 GPU PID、`train.csv` 最新 step、以及实际日志
 
 现在开始执行，从环境部署（Part 1）开始。

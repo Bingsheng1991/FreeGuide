@@ -7,6 +7,29 @@
 > 4. If an experiment crashes with NaN, log it to `logs/failed_experiments.txt` and continue.
 > 5. All commands must run inside `conda activate freeguide`.
 
+## Server Notes (Validated On `/home/wbs/FreeGuide`)
+
+- This guide was originally written with `/home/miller/FreeGuide`; on the current server the real root is `/home/wbs/FreeGuide`
+- Current server runtime:
+  - Conda root: `/home/wbs/anaconda3`
+  - GPUs: `3× NVIDIA A800 80GB PCIe`
+  - Driver CUDA version: `12.6`
+- The synced server copy currently **does not** include `tdmpc2/setup.py` or `tdmpc2/pyproject.toml`
+  - If `cd tdmpc2 && pip install -e .` fails with “does not appear to be a Python project”, do **not** modify `tdmpc2/`
+  - Use `cd {PROJECT_ROOT}/tdmpc2/tdmpc2` and run `python train.py ...` directly instead
+- On this server, the following extra Python packages were required during validation:
+  - `tensordict`
+  - `torchrl`
+  - `termcolor`
+  - `wandb`
+  - `h5py`
+  - `moviepy`
+  - `requests[socks]`
+- `walker-run` 5000-step validation has been confirmed to run successfully on this machine
+- The `gym` deprecation warning may appear at process start; it is currently a warning only and has not blocked `dm_control` training
+- If your terminal runner automatically reaps child processes after the command returns, outer orchestration must be kept alive in a persistent PTY/session; plain one-shot `nohup ... &` from a disposable runner may not keep the controller alive
+- `check_progress.sh` is useful, but it matches only `exp_name`, so multiple seeds of the same experiment can be over-counted as RUNNING; always cross-check with `check_gpu.sh`, active PIDs, and `train.csv`
+
 ---
 
 ## Part 1: Environment Deployment
@@ -45,6 +68,7 @@ pip install -e .
 # Additional dependencies
 pip install dm_control mujoco hydra-core omegaconf matplotlib pandas scipy tensorboard
 pip install gymnasium==0.29.1 hydra-submitit-launcher imageio imageio-ffmpeg
+pip install tensordict torchrl termcolor wandb h5py moviepy requests[socks]
 ```
 
 ### 1.4 Verify Environment
@@ -59,6 +83,7 @@ Must complete without errors. If it fails:
 - `ModuleNotFoundError`: install the missing package
 - CUDA errors: verify `torch.cuda.is_available()` returns True
 - gym errors: ensure `gymnasium==0.29.1`
+- `pip install -e .` errors on the current synced server copy: this is expected if package metadata is missing; continue by running from `tdmpc2/tdmpc2/`
 
 ---
 
@@ -681,6 +706,12 @@ Note: seed is NOT part of exp_name. It is captured in the directory path: logs/{
 | CUDA error | Try `CUDA_VISIBLE_DEVICES=X` with a different GPU |
 | dm_control error | Ensure `gymnasium==0.29.1` |
 | Process killed | Check `dmesg` for OOM-killer, restart with smaller buffer |
+
+### Additional operational notes
+
+- If `logs/failed_experiments.txt` contains old `incomplete` entries from previous launcher probes, do not automatically treat them as current failures; verify against the active process list and latest CSV timestamps
+- During the first ~50K steps, `eval.csv` may contain only the initial row because `eval_freq=50000`; use `train.csv` to judge whether a run is making forward progress
+- `latent_states/` is expected to be absent early in training; these dumps appear only after the configured dump interval is reached
 
 ### Time estimates
 

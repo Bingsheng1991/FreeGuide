@@ -13,6 +13,30 @@ FreeGuide 在 TD-MPC2 的 MPPI 规划器中注入 Expected Free Energy 评分，
 - 本地 GPU：RTX 4090 24GB
 - 服务器（可选）：3×A800 80GB
 
+### 当前服务器实况（2026-03-14 已验证）
+
+- 当前服务器实际项目根目录是：`/home/wbs/FreeGuide`
+- 当前服务器 conda 路径是：`/home/wbs/anaconda3`
+- 当前服务器 GPU 是：`3× NVIDIA A800 80GB PCIe`
+- 当前服务器驱动报告 CUDA 版本是：`12.6`
+- 在这台服务器上，训练入口以 `cd /home/wbs/FreeGuide/tdmpc2/tdmpc2 && python train.py ...` 运行已验证可用
+- `walker-run` 5000 steps 环境验证已通过
+
+### 当前代码同步版本的额外注意事项
+
+- 当前同步到服务器的 `tdmpc2/` 目录**没有** `setup.py` 或 `pyproject.toml`
+- 因此文档中的 `cd tdmpc2 && pip install -e .` 在这份服务器副本上不可执行；不能把这视为环境失败
+- 当前可行做法是直接在 `tdmpc2/tdmpc2/` 工作目录运行 `python train.py ...`
+- 这份服务器环境里除 `dm_control` / `mujoco` / `hydra-core` 外，还实际补装了：
+  `tensordict`、`torchrl`、`termcolor`、`wandb`、`h5py`、`moviepy`、`requests[socks]`
+
+### 服务器执行经验
+
+- 旧版 `gym` 会打印弃用警告，但当前 `dm_control` 训练可正常继续，这个警告目前不是阻塞错误
+- `check_progress.sh` 通过 `pgrep exp_name=...` 识别进程，会把同名不同 seed 的实验误算成都在跑；做状态汇报时要交叉参考 GPU 进程和 `train.csv`
+- `logs/failed_experiments.txt` 里如果出现早期调度试错留下的 `incomplete` 记录，不要直接当成 NaN/OOM 失败；必须结合当前日志和活跃进程二次确认
+- 在 Codex / IDE 终端环境里，如果执行器会在命令返回后回收后台子进程，则必须用**持久 PTY 会话**托管外层 orchestration shell；仅靠一次性 `nohup ... &` 可能留不住总控进程
+
 ## 下载源（必须遵守）
 
 所有 pip 和 conda 安装优先使用中国镜像源：
