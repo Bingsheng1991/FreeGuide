@@ -139,7 +139,7 @@ $$\mathcal{I}_{\text{EDD}}(\mathbf{z}, \mathbf{a}) = \frac{1}{K} \sum_{k=1}^K \|
 
 **Justification.** Under mild assumptions, ensemble disagreement is a consistent estimator of epistemic uncertainty in neural networks (Lakshminarayanan et al., 2017). High disagreement indicates that the dynamics in this region of the latent space are poorly learned—precisely the states where information gain from visiting would be highest.
 
-**Training.** Each dynamics head $d_k$ is trained with the same joint-embedding prediction loss as the original dynamics model, but with independent random initialization. Crucially, the ensemble heads are trained with a separate optimizer that updates *only* the ensemble parameters—gradients do not flow back through the shared encoder or affect the main dynamics model's training. All heads share the encoder $h$ (whose gradients come solely from the original TD-MPC2 objectives). The "main" dynamics model used for trajectory rollouts during planning is the ensemble mean $\bar{d}$.
+**Training.** Each dynamics head $d_k$ is trained with the same joint-embedding prediction loss as the original dynamics model, but with independent random initialization. Crucially, the ensemble heads are trained with a separate optimizer that updates *only* the ensemble parameters—gradients do not flow back through the shared encoder or affect the main dynamics model's training. All heads share the encoder $h$ (whose gradients come solely from the original TD-MPC2 objectives). During planning, the original TD-MPC2 main dynamics model remains the rollout transition model; the ensemble is queried only to estimate disagreement. This preserves the intended comparison: FreeGuide changes the planning score, not the latent transition used by baseline TD-MPC2.
 
 **Computational cost.** Each dynamics head is a 2-layer MLP (512 → 512 → 512) with SimNorm output matching the main dynamics. With $K=3$ heads, this adds approximately 2.4M parameters (48% overhead on the 5.0M base model), and negligible wall-clock overhead since the heads are evaluated in a single batched forward pass.
 
@@ -171,7 +171,7 @@ where $\bar{\mathcal{I}}_t$ is the exponential moving average of $\mathcal{I}$ o
 
 **Intuition.** When average information gain is high (world model is uncertain about many things), $\beta$ increases to encourage exploration. As the world model improves and uncertainty decreases, $\beta$ automatically decreases, shifting the agent toward exploitation. This mirrors the biological observation that organisms explore more during early development and gradually shift toward habitual behavior.
 
-**Setting $\mathcal{I}_{\text{target}}$.** We set $\mathcal{I}_{\text{target}} = \rho \cdot \bar{\mathcal{I}}_0$ where $\bar{\mathcal{I}}_0$ is the average information gain during the first 10K environment steps and $\rho = 0.3$ is a decay ratio. This requires no per-task tuning.
+**Setting $\mathcal{I}_{\text{target}}$.** We set $\mathcal{I}_{\text{target}} = \rho \cdot \bar{\mathcal{I}}_0$ where $\bar{\mathcal{I}}_0$ is the average trajectory-level information gain during the first 10K environment steps and $\rho = 0.3$ is a decay ratio. In implementation, the EMA is updated once per episode, but the calibration threshold itself is measured in environment steps rather than episode count. This requires no per-task tuning.
 
 ### 3.4 Termination-Aware Epistemic Planning
 
@@ -200,7 +200,7 @@ Output: Action a_t
 8:          for i = 0 to H-1 do
 9:              // Ensemble dynamics rollout
 10:             z'_k = d_k(z, a^n_i) for k = 1,...,K
-11:             z' = mean(z'_1,...,z'_K)
+11:             z' = d(z, a^n_i)                           // keep TD-MPC2 main dynamics for rollout
 12:
 13:             // Epistemic value: ensemble disagreement
 14:             I_EDD = (1/K) Σ_k ||z'_k - z'||²
@@ -232,11 +232,11 @@ Output: Action a_t
 ```
 
 ```
-Algorithm 2: Adaptive β Update (per episode)
+Algorithm 2: Adaptive β Update (per episode; calibrated in env steps)
 ─────────────────────────────────────────────────
 1:  Compute episode mean information gain: I_mean
 2:  Update EMA: I_bar ← 0.99 · I_bar + 0.01 · I_mean
-3:  Gradient step: β ← β - η · (I_bar - I_target)
+3:  Gradient step: β ← β + η · (I_bar - I_target)
 4:  Clamp: β ← clamp(β, [β_min, β_max])
 ```
 
@@ -283,6 +283,7 @@ We do not include SAC or DreamerV3 as baselines because Hansen et al. (2024) hav
 - **Base implementation**: Official TD-MPC2 codebase (github.com/nicklashansen/tdmpc2).
 - **FreeGuide**: $K=3$ ensemble dynamics heads (2-layer MLP, 512 hidden), sharing the encoder. QEV mixing $\alpha = 0.5$. Adaptive β: $\eta = 10^{-4}$, $\beta_{\min} = 0$, $\beta_{\max} = 1.0$, $\rho = 0.3$.
 - **RND**: Fixed random target network (obs_dim→256→ReLU→256) + trainable predictor (same architecture). Bonus coefficient 0.01, with running normalization. **Importantly, RND operates on raw observations rather than latent states.** TD-MPC2's latent space is constrained by SimNorm (simplicial normalization), which projects latent vectors onto a simplex via chunked softmax. This highly structured geometry makes prediction between two random networks trivially easy—we found that latent-space RND produces near-zero bonus throughout training, rendering exploration ineffective. Operating on raw observations preserves the novelty signal.
+- **Compiler setting**: We run experiments with `compile=false` because, in the current PyTorch/TensorDict/TorchRL stack, `torch.compile` can trigger CUDAGraph-related logging failures that disproportionately affect the RND baseline and confound method comparison.
 - **All other hyperparameters**: Identical to TD-MPC2 defaults (Table 5 of Hansen et al., 2024).
 - **Seeds**: 5 random seeds for all experiments.
 - **Hardware**: Single NVIDIA A800 80GB GPU per experiment.
@@ -402,7 +403,7 @@ This pattern mirrors the "exploration-to-exploitation" transition observed in bi
 
 ## 6. Discussion and Conclusion
 
-**Summary.** We introduced FreeGuide, a principled method for incorporating epistemic exploration into latent-space planning via Expected Free Energy minimization. By approximating information gain through ensemble dynamics disagreement and modifying only the MPPI planning objective—not the reward signal—FreeGuide preserves the integrity of the learned world model while guiding the agent toward uncertainty-reducing trajectories. Experiments across 5 morphologically diverse tasks (6–38 DoF) demonstrate that FreeGuide's advantage scales with task dimensionality, providing the largest sample efficiency gains on high-dimensional control problems. Comparison with RND, which injects exploration bonuses into the reward signal, reveals that modifying the planning objective is a cleaner and more effective approach to epistemic exploration in model-based RL.
+**Summary.** We introduced FreeGuide, a principled method for incorporating epistemic exploration into latent-space planning via Expected Free Energy minimization. By approximating information gain through ensemble dynamics disagreement and modifying only the MPPI planning objective—not the reward signal or the rollout transition model—FreeGuide preserves the integrity of the learned world model while guiding the agent toward uncertainty-reducing trajectories. Experiments across 5 morphologically diverse tasks (6–38 DoF) demonstrate that FreeGuide's advantage scales with task dimensionality, providing the largest sample efficiency gains on high-dimensional control problems. Comparison with RND, which injects exploration bonuses into the reward signal, reveals that modifying the planning objective is a cleaner and more effective approach to epistemic exploration in model-based RL.
 
 **SimNorm and the failure of latent-space novelty detection.** An instructive finding from our implementation is that RND fails entirely when applied to TD-MPC2's latent space. SimNorm constrains latent vectors to lie on a product of simplices (chunked softmax), creating a highly structured geometry where the prediction problem between two random networks becomes trivial—the predictor matches the target almost immediately, producing near-zero exploration bonus. This observation has broader implications: novelty-based exploration methods that rely on prediction difficulty (RND, ICM) may be fundamentally incompatible with structured latent spaces common in modern MBRL. In contrast, FreeGuide's ensemble disagreement naturally operates in this constrained space because disagreement between independently trained dynamics heads reflects genuine epistemic uncertainty about transitions, not just geometric complexity of the representation.
 

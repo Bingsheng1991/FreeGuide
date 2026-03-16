@@ -28,11 +28,31 @@
   - `requests[socks]`
 - `walker-run` 5000-step validation has been confirmed to run successfully on this machine
 - The `gym` deprecation warning may appear at process start; it is currently a warning only and has not blocked `dm_control` training
+- `torch.compile` / `compile=true` is not currently recommended on this server for the paper runs:
+  - with the present `torch + torchrl + tensordict` stack, `tdmpc2_rnd` can crash near the first `50k eval`
+  - observed error: `RuntimeError: accessing tensor output of CUDAGraphs that has been overwritten by a subsequent run`
+  - default server experiment flags should therefore use `compile=false`
 - If your terminal runner automatically reaps child processes after the command returns, outer orchestration must be kept alive in a persistent PTY/session; plain one-shot `nohup ... &` from a disposable runner may not keep the controller alive
 - On this server, the default operational choice is now:
   - keep **training commands** as `nohup python train.py ... &`
   - keep the **outer orchestration / batch launcher** inside `tmux`
 - `check_progress.sh` is useful, but it matches only `exp_name`, so multiple seeds of the same experiment can be over-counted as RUNNING; always cross-check with `check_gpu.sh`, active PIDs, and `train.csv`
+
+### 2026-03-16 FreeGuide Implementation Corrections
+
+Do not mix pre-fix and post-fix FreeGuide results. Before 2026-03-16, the local implementation had several material issues:
+
+- adaptive `beta` calibration used episode count instead of environment-step count
+- adaptive `beta` update sign was reversed
+- epistemic running statistics used only the last planning-step information gain instead of trajectory-level gain
+- planning rolled out the ensemble mean dynamics instead of TD-MPC2's original main dynamics
+
+Current valid server runs should therefore be treated as those started only after:
+
+- code fixes landed in `tdmpc2/tdmpc2/tdmpc2.py` and `trainer/online_trainer.py`
+- orchestration hang-on-failure was fixed in `experiments/scripts/server_batch_lib.sh`
+- old result directories were deleted
+- experiments were relaunched with `compile=false`
 
 ### Recommended launcher pattern
 
@@ -133,7 +153,7 @@ Each A800 can run **4 experiments in parallel** (each experiment uses ~8-12 GB).
 
 All experiments use these flags:
 ```
-steps=3000000 enable_wandb=false wandb_project=freeguide compile=true save_csv=true save_video=false eval_freq=50000
+steps=3000000 enable_wandb=false wandb_project=freeguide compile=false save_csv=true save_video=false eval_freq=50000
 ```
 
 ### Batch 1: humanoid-run on GPU 0 (15 runs, 4 at a time)
@@ -143,45 +163,45 @@ cd /home/miller/FreeGuide/tdmpc2/tdmpc2
 mkdir -p /home/miller/FreeGuide/logs
 
 # --- Batch 1a: seeds 1-4 (parallel) ---
-CUDA_VISIBLE_DEVICES=0 nohup python train.py task=humanoid-run seed=1 freeguide.enabled=false rnd.enabled=false steps=3000000 enable_wandb=false wandb_project=freeguide compile=true save_csv=true save_video=false eval_freq=50000 exp_name=tdmpc2_humanoid-run > /home/miller/FreeGuide/logs/tdmpc2_humanoid-run_seed1.log 2>&1 &
+CUDA_VISIBLE_DEVICES=0 nohup python train.py task=humanoid-run seed=1 freeguide.enabled=false rnd.enabled=false steps=3000000 enable_wandb=false wandb_project=freeguide compile=false save_csv=true save_video=false eval_freq=50000 exp_name=tdmpc2_humanoid-run > /home/miller/FreeGuide/logs/tdmpc2_humanoid-run_seed1.log 2>&1 &
 
-CUDA_VISIBLE_DEVICES=0 nohup python train.py task=humanoid-run seed=2 freeguide.enabled=false rnd.enabled=false steps=3000000 enable_wandb=false wandb_project=freeguide compile=true save_csv=true save_video=false eval_freq=50000 exp_name=tdmpc2_humanoid-run > /home/miller/FreeGuide/logs/tdmpc2_humanoid-run_seed2.log 2>&1 &
+CUDA_VISIBLE_DEVICES=0 nohup python train.py task=humanoid-run seed=2 freeguide.enabled=false rnd.enabled=false steps=3000000 enable_wandb=false wandb_project=freeguide compile=false save_csv=true save_video=false eval_freq=50000 exp_name=tdmpc2_humanoid-run > /home/miller/FreeGuide/logs/tdmpc2_humanoid-run_seed2.log 2>&1 &
 
-CUDA_VISIBLE_DEVICES=0 nohup python train.py task=humanoid-run seed=3 freeguide.enabled=false rnd.enabled=false steps=3000000 enable_wandb=false wandb_project=freeguide compile=true save_csv=true save_video=false eval_freq=50000 exp_name=tdmpc2_humanoid-run > /home/miller/FreeGuide/logs/tdmpc2_humanoid-run_seed3.log 2>&1 &
+CUDA_VISIBLE_DEVICES=0 nohup python train.py task=humanoid-run seed=3 freeguide.enabled=false rnd.enabled=false steps=3000000 enable_wandb=false wandb_project=freeguide compile=false save_csv=true save_video=false eval_freq=50000 exp_name=tdmpc2_humanoid-run > /home/miller/FreeGuide/logs/tdmpc2_humanoid-run_seed3.log 2>&1 &
 
-CUDA_VISIBLE_DEVICES=0 nohup python train.py task=humanoid-run seed=4 freeguide.enabled=false rnd.enabled=false steps=3000000 enable_wandb=false wandb_project=freeguide compile=true save_csv=true save_video=false eval_freq=50000 exp_name=tdmpc2_humanoid-run > /home/miller/FreeGuide/logs/tdmpc2_humanoid-run_seed4.log 2>&1 &
+CUDA_VISIBLE_DEVICES=0 nohup python train.py task=humanoid-run seed=4 freeguide.enabled=false rnd.enabled=false steps=3000000 enable_wandb=false wandb_project=freeguide compile=false save_csv=true save_video=false eval_freq=50000 exp_name=tdmpc2_humanoid-run > /home/miller/FreeGuide/logs/tdmpc2_humanoid-run_seed4.log 2>&1 &
 
 # Wait for batch 1a to finish before starting 1b
 wait
 
 # --- Batch 1b: seed 5 + rnd seeds 1-3 ---
-CUDA_VISIBLE_DEVICES=0 nohup python train.py task=humanoid-run seed=5 freeguide.enabled=false rnd.enabled=false steps=3000000 enable_wandb=false wandb_project=freeguide compile=true save_csv=true save_video=false eval_freq=50000 exp_name=tdmpc2_humanoid-run > /home/miller/FreeGuide/logs/tdmpc2_humanoid-run_seed5.log 2>&1 &
+CUDA_VISIBLE_DEVICES=0 nohup python train.py task=humanoid-run seed=5 freeguide.enabled=false rnd.enabled=false steps=3000000 enable_wandb=false wandb_project=freeguide compile=false save_csv=true save_video=false eval_freq=50000 exp_name=tdmpc2_humanoid-run > /home/miller/FreeGuide/logs/tdmpc2_humanoid-run_seed5.log 2>&1 &
 
-CUDA_VISIBLE_DEVICES=0 nohup python train.py task=humanoid-run seed=1 freeguide.enabled=false rnd.enabled=true steps=3000000 enable_wandb=false wandb_project=freeguide compile=true save_csv=true save_video=false eval_freq=50000 exp_name=tdmpc2_rnd_humanoid-run > /home/miller/FreeGuide/logs/tdmpc2_rnd_humanoid-run_seed1.log 2>&1 &
+CUDA_VISIBLE_DEVICES=0 nohup python train.py task=humanoid-run seed=1 freeguide.enabled=false rnd.enabled=true steps=3000000 enable_wandb=false wandb_project=freeguide compile=false save_csv=true save_video=false eval_freq=50000 exp_name=tdmpc2_rnd_humanoid-run > /home/miller/FreeGuide/logs/tdmpc2_rnd_humanoid-run_seed1.log 2>&1 &
 
-CUDA_VISIBLE_DEVICES=0 nohup python train.py task=humanoid-run seed=2 freeguide.enabled=false rnd.enabled=true steps=3000000 enable_wandb=false wandb_project=freeguide compile=true save_csv=true save_video=false eval_freq=50000 exp_name=tdmpc2_rnd_humanoid-run > /home/miller/FreeGuide/logs/tdmpc2_rnd_humanoid-run_seed2.log 2>&1 &
+CUDA_VISIBLE_DEVICES=0 nohup python train.py task=humanoid-run seed=2 freeguide.enabled=false rnd.enabled=true steps=3000000 enable_wandb=false wandb_project=freeguide compile=false save_csv=true save_video=false eval_freq=50000 exp_name=tdmpc2_rnd_humanoid-run > /home/miller/FreeGuide/logs/tdmpc2_rnd_humanoid-run_seed2.log 2>&1 &
 
-CUDA_VISIBLE_DEVICES=0 nohup python train.py task=humanoid-run seed=3 freeguide.enabled=false rnd.enabled=true steps=3000000 enable_wandb=false wandb_project=freeguide compile=true save_csv=true save_video=false eval_freq=50000 exp_name=tdmpc2_rnd_humanoid-run > /home/miller/FreeGuide/logs/tdmpc2_rnd_humanoid-run_seed3.log 2>&1 &
+CUDA_VISIBLE_DEVICES=0 nohup python train.py task=humanoid-run seed=3 freeguide.enabled=false rnd.enabled=true steps=3000000 enable_wandb=false wandb_project=freeguide compile=false save_csv=true save_video=false eval_freq=50000 exp_name=tdmpc2_rnd_humanoid-run > /home/miller/FreeGuide/logs/tdmpc2_rnd_humanoid-run_seed3.log 2>&1 &
 
 wait
 
 # --- Batch 1c: rnd seeds 4-5 + freeguide seeds 1-2 ---
-CUDA_VISIBLE_DEVICES=0 nohup python train.py task=humanoid-run seed=4 freeguide.enabled=false rnd.enabled=true steps=3000000 enable_wandb=false wandb_project=freeguide compile=true save_csv=true save_video=false eval_freq=50000 exp_name=tdmpc2_rnd_humanoid-run > /home/miller/FreeGuide/logs/tdmpc2_rnd_humanoid-run_seed4.log 2>&1 &
+CUDA_VISIBLE_DEVICES=0 nohup python train.py task=humanoid-run seed=4 freeguide.enabled=false rnd.enabled=true steps=3000000 enable_wandb=false wandb_project=freeguide compile=false save_csv=true save_video=false eval_freq=50000 exp_name=tdmpc2_rnd_humanoid-run > /home/miller/FreeGuide/logs/tdmpc2_rnd_humanoid-run_seed4.log 2>&1 &
 
-CUDA_VISIBLE_DEVICES=0 nohup python train.py task=humanoid-run seed=5 freeguide.enabled=false rnd.enabled=true steps=3000000 enable_wandb=false wandb_project=freeguide compile=true save_csv=true save_video=false eval_freq=50000 exp_name=tdmpc2_rnd_humanoid-run > /home/miller/FreeGuide/logs/tdmpc2_rnd_humanoid-run_seed5.log 2>&1 &
+CUDA_VISIBLE_DEVICES=0 nohup python train.py task=humanoid-run seed=5 freeguide.enabled=false rnd.enabled=true steps=3000000 enable_wandb=false wandb_project=freeguide compile=false save_csv=true save_video=false eval_freq=50000 exp_name=tdmpc2_rnd_humanoid-run > /home/miller/FreeGuide/logs/tdmpc2_rnd_humanoid-run_seed5.log 2>&1 &
 
-CUDA_VISIBLE_DEVICES=0 nohup python train.py task=humanoid-run seed=1 freeguide.enabled=true rnd.enabled=false steps=3000000 enable_wandb=false wandb_project=freeguide compile=true save_csv=true save_video=false eval_freq=50000 exp_name=freeguide_humanoid-run > /home/miller/FreeGuide/logs/freeguide_humanoid-run_seed1.log 2>&1 &
+CUDA_VISIBLE_DEVICES=0 nohup python train.py task=humanoid-run seed=1 freeguide.enabled=true rnd.enabled=false steps=3000000 enable_wandb=false wandb_project=freeguide compile=false save_csv=true save_video=false eval_freq=50000 exp_name=freeguide_humanoid-run > /home/miller/FreeGuide/logs/freeguide_humanoid-run_seed1.log 2>&1 &
 
-CUDA_VISIBLE_DEVICES=0 nohup python train.py task=humanoid-run seed=2 freeguide.enabled=true rnd.enabled=false steps=3000000 enable_wandb=false wandb_project=freeguide compile=true save_csv=true save_video=false eval_freq=50000 exp_name=freeguide_humanoid-run > /home/miller/FreeGuide/logs/freeguide_humanoid-run_seed2.log 2>&1 &
+CUDA_VISIBLE_DEVICES=0 nohup python train.py task=humanoid-run seed=2 freeguide.enabled=true rnd.enabled=false steps=3000000 enable_wandb=false wandb_project=freeguide compile=false save_csv=true save_video=false eval_freq=50000 exp_name=freeguide_humanoid-run > /home/miller/FreeGuide/logs/freeguide_humanoid-run_seed2.log 2>&1 &
 
 wait
 
 # --- Batch 1d: freeguide seeds 3-5 + 1 slot free ---
-CUDA_VISIBLE_DEVICES=0 nohup python train.py task=humanoid-run seed=3 freeguide.enabled=true rnd.enabled=false steps=3000000 enable_wandb=false wandb_project=freeguide compile=true save_csv=true save_video=false eval_freq=50000 exp_name=freeguide_humanoid-run > /home/miller/FreeGuide/logs/freeguide_humanoid-run_seed3.log 2>&1 &
+CUDA_VISIBLE_DEVICES=0 nohup python train.py task=humanoid-run seed=3 freeguide.enabled=true rnd.enabled=false steps=3000000 enable_wandb=false wandb_project=freeguide compile=false save_csv=true save_video=false eval_freq=50000 exp_name=freeguide_humanoid-run > /home/miller/FreeGuide/logs/freeguide_humanoid-run_seed3.log 2>&1 &
 
-CUDA_VISIBLE_DEVICES=0 nohup python train.py task=humanoid-run seed=4 freeguide.enabled=true rnd.enabled=false steps=3000000 enable_wandb=false wandb_project=freeguide compile=true save_csv=true save_video=false eval_freq=50000 exp_name=freeguide_humanoid-run > /home/miller/FreeGuide/logs/freeguide_humanoid-run_seed4.log 2>&1 &
+CUDA_VISIBLE_DEVICES=0 nohup python train.py task=humanoid-run seed=4 freeguide.enabled=true rnd.enabled=false steps=3000000 enable_wandb=false wandb_project=freeguide compile=false save_csv=true save_video=false eval_freq=50000 exp_name=freeguide_humanoid-run > /home/miller/FreeGuide/logs/freeguide_humanoid-run_seed4.log 2>&1 &
 
-CUDA_VISIBLE_DEVICES=0 nohup python train.py task=humanoid-run seed=5 freeguide.enabled=true rnd.enabled=false steps=3000000 enable_wandb=false wandb_project=freeguide compile=true save_csv=true save_video=false eval_freq=50000 exp_name=freeguide_humanoid-run > /home/miller/FreeGuide/logs/freeguide_humanoid-run_seed5.log 2>&1 &
+CUDA_VISIBLE_DEVICES=0 nohup python train.py task=humanoid-run seed=5 freeguide.enabled=true rnd.enabled=false steps=3000000 enable_wandb=false wandb_project=freeguide compile=false save_csv=true save_video=false eval_freq=50000 exp_name=freeguide_humanoid-run > /home/miller/FreeGuide/logs/freeguide_humanoid-run_seed5.log 2>&1 &
 
 wait
 ```
@@ -190,44 +210,44 @@ wait
 
 ```bash
 # --- Batch 2a: tdmpc2 seeds 1-4 ---
-CUDA_VISIBLE_DEVICES=0 nohup python train.py task=dog-run seed=1 freeguide.enabled=false rnd.enabled=false steps=3000000 enable_wandb=false wandb_project=freeguide compile=true save_csv=true save_video=false eval_freq=50000 exp_name=tdmpc2_dog-run > /home/miller/FreeGuide/logs/tdmpc2_dog-run_seed1.log 2>&1 &
+CUDA_VISIBLE_DEVICES=0 nohup python train.py task=dog-run seed=1 freeguide.enabled=false rnd.enabled=false steps=3000000 enable_wandb=false wandb_project=freeguide compile=false save_csv=true save_video=false eval_freq=50000 exp_name=tdmpc2_dog-run > /home/miller/FreeGuide/logs/tdmpc2_dog-run_seed1.log 2>&1 &
 
-CUDA_VISIBLE_DEVICES=0 nohup python train.py task=dog-run seed=2 freeguide.enabled=false rnd.enabled=false steps=3000000 enable_wandb=false wandb_project=freeguide compile=true save_csv=true save_video=false eval_freq=50000 exp_name=tdmpc2_dog-run > /home/miller/FreeGuide/logs/tdmpc2_dog-run_seed2.log 2>&1 &
+CUDA_VISIBLE_DEVICES=0 nohup python train.py task=dog-run seed=2 freeguide.enabled=false rnd.enabled=false steps=3000000 enable_wandb=false wandb_project=freeguide compile=false save_csv=true save_video=false eval_freq=50000 exp_name=tdmpc2_dog-run > /home/miller/FreeGuide/logs/tdmpc2_dog-run_seed2.log 2>&1 &
 
-CUDA_VISIBLE_DEVICES=0 nohup python train.py task=dog-run seed=3 freeguide.enabled=false rnd.enabled=false steps=3000000 enable_wandb=false wandb_project=freeguide compile=true save_csv=true save_video=false eval_freq=50000 exp_name=tdmpc2_dog-run > /home/miller/FreeGuide/logs/tdmpc2_dog-run_seed3.log 2>&1 &
+CUDA_VISIBLE_DEVICES=0 nohup python train.py task=dog-run seed=3 freeguide.enabled=false rnd.enabled=false steps=3000000 enable_wandb=false wandb_project=freeguide compile=false save_csv=true save_video=false eval_freq=50000 exp_name=tdmpc2_dog-run > /home/miller/FreeGuide/logs/tdmpc2_dog-run_seed3.log 2>&1 &
 
-CUDA_VISIBLE_DEVICES=0 nohup python train.py task=dog-run seed=4 freeguide.enabled=false rnd.enabled=false steps=3000000 enable_wandb=false wandb_project=freeguide compile=true save_csv=true save_video=false eval_freq=50000 exp_name=tdmpc2_dog-run > /home/miller/FreeGuide/logs/tdmpc2_dog-run_seed4.log 2>&1 &
+CUDA_VISIBLE_DEVICES=0 nohup python train.py task=dog-run seed=4 freeguide.enabled=false rnd.enabled=false steps=3000000 enable_wandb=false wandb_project=freeguide compile=false save_csv=true save_video=false eval_freq=50000 exp_name=tdmpc2_dog-run > /home/miller/FreeGuide/logs/tdmpc2_dog-run_seed4.log 2>&1 &
 
 wait
 
 # --- Batch 2b: tdmpc2 s5 + rnd s1-3 ---
-CUDA_VISIBLE_DEVICES=0 nohup python train.py task=dog-run seed=5 freeguide.enabled=false rnd.enabled=false steps=3000000 enable_wandb=false wandb_project=freeguide compile=true save_csv=true save_video=false eval_freq=50000 exp_name=tdmpc2_dog-run > /home/miller/FreeGuide/logs/tdmpc2_dog-run_seed5.log 2>&1 &
+CUDA_VISIBLE_DEVICES=0 nohup python train.py task=dog-run seed=5 freeguide.enabled=false rnd.enabled=false steps=3000000 enable_wandb=false wandb_project=freeguide compile=false save_csv=true save_video=false eval_freq=50000 exp_name=tdmpc2_dog-run > /home/miller/FreeGuide/logs/tdmpc2_dog-run_seed5.log 2>&1 &
 
-CUDA_VISIBLE_DEVICES=0 nohup python train.py task=dog-run seed=1 freeguide.enabled=false rnd.enabled=true steps=3000000 enable_wandb=false wandb_project=freeguide compile=true save_csv=true save_video=false eval_freq=50000 exp_name=tdmpc2_rnd_dog-run > /home/miller/FreeGuide/logs/tdmpc2_rnd_dog-run_seed1.log 2>&1 &
+CUDA_VISIBLE_DEVICES=0 nohup python train.py task=dog-run seed=1 freeguide.enabled=false rnd.enabled=true steps=3000000 enable_wandb=false wandb_project=freeguide compile=false save_csv=true save_video=false eval_freq=50000 exp_name=tdmpc2_rnd_dog-run > /home/miller/FreeGuide/logs/tdmpc2_rnd_dog-run_seed1.log 2>&1 &
 
-CUDA_VISIBLE_DEVICES=0 nohup python train.py task=dog-run seed=2 freeguide.enabled=false rnd.enabled=true steps=3000000 enable_wandb=false wandb_project=freeguide compile=true save_csv=true save_video=false eval_freq=50000 exp_name=tdmpc2_rnd_dog-run > /home/miller/FreeGuide/logs/tdmpc2_rnd_dog-run_seed2.log 2>&1 &
+CUDA_VISIBLE_DEVICES=0 nohup python train.py task=dog-run seed=2 freeguide.enabled=false rnd.enabled=true steps=3000000 enable_wandb=false wandb_project=freeguide compile=false save_csv=true save_video=false eval_freq=50000 exp_name=tdmpc2_rnd_dog-run > /home/miller/FreeGuide/logs/tdmpc2_rnd_dog-run_seed2.log 2>&1 &
 
-CUDA_VISIBLE_DEVICES=0 nohup python train.py task=dog-run seed=3 freeguide.enabled=false rnd.enabled=true steps=3000000 enable_wandb=false wandb_project=freeguide compile=true save_csv=true save_video=false eval_freq=50000 exp_name=tdmpc2_rnd_dog-run > /home/miller/FreeGuide/logs/tdmpc2_rnd_dog-run_seed3.log 2>&1 &
+CUDA_VISIBLE_DEVICES=0 nohup python train.py task=dog-run seed=3 freeguide.enabled=false rnd.enabled=true steps=3000000 enable_wandb=false wandb_project=freeguide compile=false save_csv=true save_video=false eval_freq=50000 exp_name=tdmpc2_rnd_dog-run > /home/miller/FreeGuide/logs/tdmpc2_rnd_dog-run_seed3.log 2>&1 &
 
 wait
 
 # --- Batch 2c: rnd s4-5 + freeguide s1-2 ---
-CUDA_VISIBLE_DEVICES=0 nohup python train.py task=dog-run seed=4 freeguide.enabled=false rnd.enabled=true steps=3000000 enable_wandb=false wandb_project=freeguide compile=true save_csv=true save_video=false eval_freq=50000 exp_name=tdmpc2_rnd_dog-run > /home/miller/FreeGuide/logs/tdmpc2_rnd_dog-run_seed4.log 2>&1 &
+CUDA_VISIBLE_DEVICES=0 nohup python train.py task=dog-run seed=4 freeguide.enabled=false rnd.enabled=true steps=3000000 enable_wandb=false wandb_project=freeguide compile=false save_csv=true save_video=false eval_freq=50000 exp_name=tdmpc2_rnd_dog-run > /home/miller/FreeGuide/logs/tdmpc2_rnd_dog-run_seed4.log 2>&1 &
 
-CUDA_VISIBLE_DEVICES=0 nohup python train.py task=dog-run seed=5 freeguide.enabled=false rnd.enabled=true steps=3000000 enable_wandb=false wandb_project=freeguide compile=true save_csv=true save_video=false eval_freq=50000 exp_name=tdmpc2_rnd_dog-run > /home/miller/FreeGuide/logs/tdmpc2_rnd_dog-run_seed5.log 2>&1 &
+CUDA_VISIBLE_DEVICES=0 nohup python train.py task=dog-run seed=5 freeguide.enabled=false rnd.enabled=true steps=3000000 enable_wandb=false wandb_project=freeguide compile=false save_csv=true save_video=false eval_freq=50000 exp_name=tdmpc2_rnd_dog-run > /home/miller/FreeGuide/logs/tdmpc2_rnd_dog-run_seed5.log 2>&1 &
 
-CUDA_VISIBLE_DEVICES=0 nohup python train.py task=dog-run seed=1 freeguide.enabled=true rnd.enabled=false steps=3000000 enable_wandb=false wandb_project=freeguide compile=true save_csv=true save_video=false eval_freq=50000 exp_name=freeguide_dog-run > /home/miller/FreeGuide/logs/freeguide_dog-run_seed1.log 2>&1 &
+CUDA_VISIBLE_DEVICES=0 nohup python train.py task=dog-run seed=1 freeguide.enabled=true rnd.enabled=false steps=3000000 enable_wandb=false wandb_project=freeguide compile=false save_csv=true save_video=false eval_freq=50000 exp_name=freeguide_dog-run > /home/miller/FreeGuide/logs/freeguide_dog-run_seed1.log 2>&1 &
 
-CUDA_VISIBLE_DEVICES=0 nohup python train.py task=dog-run seed=2 freeguide.enabled=true rnd.enabled=false steps=3000000 enable_wandb=false wandb_project=freeguide compile=true save_csv=true save_video=false eval_freq=50000 exp_name=freeguide_dog-run > /home/miller/FreeGuide/logs/freeguide_dog-run_seed2.log 2>&1 &
+CUDA_VISIBLE_DEVICES=0 nohup python train.py task=dog-run seed=2 freeguide.enabled=true rnd.enabled=false steps=3000000 enable_wandb=false wandb_project=freeguide compile=false save_csv=true save_video=false eval_freq=50000 exp_name=freeguide_dog-run > /home/miller/FreeGuide/logs/freeguide_dog-run_seed2.log 2>&1 &
 
 wait
 
 # --- Batch 2d: freeguide s3-5 ---
-CUDA_VISIBLE_DEVICES=0 nohup python train.py task=dog-run seed=3 freeguide.enabled=true rnd.enabled=false steps=3000000 enable_wandb=false wandb_project=freeguide compile=true save_csv=true save_video=false eval_freq=50000 exp_name=freeguide_dog-run > /home/miller/FreeGuide/logs/freeguide_dog-run_seed3.log 2>&1 &
+CUDA_VISIBLE_DEVICES=0 nohup python train.py task=dog-run seed=3 freeguide.enabled=true rnd.enabled=false steps=3000000 enable_wandb=false wandb_project=freeguide compile=false save_csv=true save_video=false eval_freq=50000 exp_name=freeguide_dog-run > /home/miller/FreeGuide/logs/freeguide_dog-run_seed3.log 2>&1 &
 
-CUDA_VISIBLE_DEVICES=0 nohup python train.py task=dog-run seed=4 freeguide.enabled=true rnd.enabled=false steps=3000000 enable_wandb=false wandb_project=freeguide compile=true save_csv=true save_video=false eval_freq=50000 exp_name=freeguide_dog-run > /home/miller/FreeGuide/logs/freeguide_dog-run_seed4.log 2>&1 &
+CUDA_VISIBLE_DEVICES=0 nohup python train.py task=dog-run seed=4 freeguide.enabled=true rnd.enabled=false steps=3000000 enable_wandb=false wandb_project=freeguide compile=false save_csv=true save_video=false eval_freq=50000 exp_name=freeguide_dog-run > /home/miller/FreeGuide/logs/freeguide_dog-run_seed4.log 2>&1 &
 
-CUDA_VISIBLE_DEVICES=0 nohup python train.py task=dog-run seed=5 freeguide.enabled=true rnd.enabled=false steps=3000000 enable_wandb=false wandb_project=freeguide compile=true save_csv=true save_video=false eval_freq=50000 exp_name=freeguide_dog-run > /home/miller/FreeGuide/logs/freeguide_dog-run_seed5.log 2>&1 &
+CUDA_VISIBLE_DEVICES=0 nohup python train.py task=dog-run seed=5 freeguide.enabled=true rnd.enabled=false steps=3000000 enable_wandb=false wandb_project=freeguide compile=false save_csv=true save_video=false eval_freq=50000 exp_name=freeguide_dog-run > /home/miller/FreeGuide/logs/freeguide_dog-run_seed5.log 2>&1 &
 
 wait
 ```
@@ -236,44 +256,44 @@ wait
 
 ```bash
 # --- Batch 3a: tdmpc2 seeds 1-4 ---
-CUDA_VISIBLE_DEVICES=1 nohup python train.py task=quadruped-run seed=1 freeguide.enabled=false rnd.enabled=false steps=3000000 enable_wandb=false wandb_project=freeguide compile=true save_csv=true save_video=false eval_freq=50000 exp_name=tdmpc2_quadruped-run > /home/miller/FreeGuide/logs/tdmpc2_quadruped-run_seed1.log 2>&1 &
+CUDA_VISIBLE_DEVICES=1 nohup python train.py task=quadruped-run seed=1 freeguide.enabled=false rnd.enabled=false steps=3000000 enable_wandb=false wandb_project=freeguide compile=false save_csv=true save_video=false eval_freq=50000 exp_name=tdmpc2_quadruped-run > /home/miller/FreeGuide/logs/tdmpc2_quadruped-run_seed1.log 2>&1 &
 
-CUDA_VISIBLE_DEVICES=1 nohup python train.py task=quadruped-run seed=2 freeguide.enabled=false rnd.enabled=false steps=3000000 enable_wandb=false wandb_project=freeguide compile=true save_csv=true save_video=false eval_freq=50000 exp_name=tdmpc2_quadruped-run > /home/miller/FreeGuide/logs/tdmpc2_quadruped-run_seed2.log 2>&1 &
+CUDA_VISIBLE_DEVICES=1 nohup python train.py task=quadruped-run seed=2 freeguide.enabled=false rnd.enabled=false steps=3000000 enable_wandb=false wandb_project=freeguide compile=false save_csv=true save_video=false eval_freq=50000 exp_name=tdmpc2_quadruped-run > /home/miller/FreeGuide/logs/tdmpc2_quadruped-run_seed2.log 2>&1 &
 
-CUDA_VISIBLE_DEVICES=1 nohup python train.py task=quadruped-run seed=3 freeguide.enabled=false rnd.enabled=false steps=3000000 enable_wandb=false wandb_project=freeguide compile=true save_csv=true save_video=false eval_freq=50000 exp_name=tdmpc2_quadruped-run > /home/miller/FreeGuide/logs/tdmpc2_quadruped-run_seed3.log 2>&1 &
+CUDA_VISIBLE_DEVICES=1 nohup python train.py task=quadruped-run seed=3 freeguide.enabled=false rnd.enabled=false steps=3000000 enable_wandb=false wandb_project=freeguide compile=false save_csv=true save_video=false eval_freq=50000 exp_name=tdmpc2_quadruped-run > /home/miller/FreeGuide/logs/tdmpc2_quadruped-run_seed3.log 2>&1 &
 
-CUDA_VISIBLE_DEVICES=1 nohup python train.py task=quadruped-run seed=4 freeguide.enabled=false rnd.enabled=false steps=3000000 enable_wandb=false wandb_project=freeguide compile=true save_csv=true save_video=false eval_freq=50000 exp_name=tdmpc2_quadruped-run > /home/miller/FreeGuide/logs/tdmpc2_quadruped-run_seed4.log 2>&1 &
+CUDA_VISIBLE_DEVICES=1 nohup python train.py task=quadruped-run seed=4 freeguide.enabled=false rnd.enabled=false steps=3000000 enable_wandb=false wandb_project=freeguide compile=false save_csv=true save_video=false eval_freq=50000 exp_name=tdmpc2_quadruped-run > /home/miller/FreeGuide/logs/tdmpc2_quadruped-run_seed4.log 2>&1 &
 
 wait
 
 # --- Batch 3b: tdmpc2 s5 + rnd s1-3 ---
-CUDA_VISIBLE_DEVICES=1 nohup python train.py task=quadruped-run seed=5 freeguide.enabled=false rnd.enabled=false steps=3000000 enable_wandb=false wandb_project=freeguide compile=true save_csv=true save_video=false eval_freq=50000 exp_name=tdmpc2_quadruped-run > /home/miller/FreeGuide/logs/tdmpc2_quadruped-run_seed5.log 2>&1 &
+CUDA_VISIBLE_DEVICES=1 nohup python train.py task=quadruped-run seed=5 freeguide.enabled=false rnd.enabled=false steps=3000000 enable_wandb=false wandb_project=freeguide compile=false save_csv=true save_video=false eval_freq=50000 exp_name=tdmpc2_quadruped-run > /home/miller/FreeGuide/logs/tdmpc2_quadruped-run_seed5.log 2>&1 &
 
-CUDA_VISIBLE_DEVICES=1 nohup python train.py task=quadruped-run seed=1 freeguide.enabled=false rnd.enabled=true steps=3000000 enable_wandb=false wandb_project=freeguide compile=true save_csv=true save_video=false eval_freq=50000 exp_name=tdmpc2_rnd_quadruped-run > /home/miller/FreeGuide/logs/tdmpc2_rnd_quadruped-run_seed1.log 2>&1 &
+CUDA_VISIBLE_DEVICES=1 nohup python train.py task=quadruped-run seed=1 freeguide.enabled=false rnd.enabled=true steps=3000000 enable_wandb=false wandb_project=freeguide compile=false save_csv=true save_video=false eval_freq=50000 exp_name=tdmpc2_rnd_quadruped-run > /home/miller/FreeGuide/logs/tdmpc2_rnd_quadruped-run_seed1.log 2>&1 &
 
-CUDA_VISIBLE_DEVICES=1 nohup python train.py task=quadruped-run seed=2 freeguide.enabled=false rnd.enabled=true steps=3000000 enable_wandb=false wandb_project=freeguide compile=true save_csv=true save_video=false eval_freq=50000 exp_name=tdmpc2_rnd_quadruped-run > /home/miller/FreeGuide/logs/tdmpc2_rnd_quadruped-run_seed2.log 2>&1 &
+CUDA_VISIBLE_DEVICES=1 nohup python train.py task=quadruped-run seed=2 freeguide.enabled=false rnd.enabled=true steps=3000000 enable_wandb=false wandb_project=freeguide compile=false save_csv=true save_video=false eval_freq=50000 exp_name=tdmpc2_rnd_quadruped-run > /home/miller/FreeGuide/logs/tdmpc2_rnd_quadruped-run_seed2.log 2>&1 &
 
-CUDA_VISIBLE_DEVICES=1 nohup python train.py task=quadruped-run seed=3 freeguide.enabled=false rnd.enabled=true steps=3000000 enable_wandb=false wandb_project=freeguide compile=true save_csv=true save_video=false eval_freq=50000 exp_name=tdmpc2_rnd_quadruped-run > /home/miller/FreeGuide/logs/tdmpc2_rnd_quadruped-run_seed3.log 2>&1 &
+CUDA_VISIBLE_DEVICES=1 nohup python train.py task=quadruped-run seed=3 freeguide.enabled=false rnd.enabled=true steps=3000000 enable_wandb=false wandb_project=freeguide compile=false save_csv=true save_video=false eval_freq=50000 exp_name=tdmpc2_rnd_quadruped-run > /home/miller/FreeGuide/logs/tdmpc2_rnd_quadruped-run_seed3.log 2>&1 &
 
 wait
 
 # --- Batch 3c: rnd s4-5 + freeguide s1-2 ---
-CUDA_VISIBLE_DEVICES=1 nohup python train.py task=quadruped-run seed=4 freeguide.enabled=false rnd.enabled=true steps=3000000 enable_wandb=false wandb_project=freeguide compile=true save_csv=true save_video=false eval_freq=50000 exp_name=tdmpc2_rnd_quadruped-run > /home/miller/FreeGuide/logs/tdmpc2_rnd_quadruped-run_seed4.log 2>&1 &
+CUDA_VISIBLE_DEVICES=1 nohup python train.py task=quadruped-run seed=4 freeguide.enabled=false rnd.enabled=true steps=3000000 enable_wandb=false wandb_project=freeguide compile=false save_csv=true save_video=false eval_freq=50000 exp_name=tdmpc2_rnd_quadruped-run > /home/miller/FreeGuide/logs/tdmpc2_rnd_quadruped-run_seed4.log 2>&1 &
 
-CUDA_VISIBLE_DEVICES=1 nohup python train.py task=quadruped-run seed=5 freeguide.enabled=false rnd.enabled=true steps=3000000 enable_wandb=false wandb_project=freeguide compile=true save_csv=true save_video=false eval_freq=50000 exp_name=tdmpc2_rnd_quadruped-run > /home/miller/FreeGuide/logs/tdmpc2_rnd_quadruped-run_seed5.log 2>&1 &
+CUDA_VISIBLE_DEVICES=1 nohup python train.py task=quadruped-run seed=5 freeguide.enabled=false rnd.enabled=true steps=3000000 enable_wandb=false wandb_project=freeguide compile=false save_csv=true save_video=false eval_freq=50000 exp_name=tdmpc2_rnd_quadruped-run > /home/miller/FreeGuide/logs/tdmpc2_rnd_quadruped-run_seed5.log 2>&1 &
 
-CUDA_VISIBLE_DEVICES=1 nohup python train.py task=quadruped-run seed=1 freeguide.enabled=true rnd.enabled=false steps=3000000 enable_wandb=false wandb_project=freeguide compile=true save_csv=true save_video=false eval_freq=50000 exp_name=freeguide_quadruped-run > /home/miller/FreeGuide/logs/freeguide_quadruped-run_seed1.log 2>&1 &
+CUDA_VISIBLE_DEVICES=1 nohup python train.py task=quadruped-run seed=1 freeguide.enabled=true rnd.enabled=false steps=3000000 enable_wandb=false wandb_project=freeguide compile=false save_csv=true save_video=false eval_freq=50000 exp_name=freeguide_quadruped-run > /home/miller/FreeGuide/logs/freeguide_quadruped-run_seed1.log 2>&1 &
 
-CUDA_VISIBLE_DEVICES=1 nohup python train.py task=quadruped-run seed=2 freeguide.enabled=true rnd.enabled=false steps=3000000 enable_wandb=false wandb_project=freeguide compile=true save_csv=true save_video=false eval_freq=50000 exp_name=freeguide_quadruped-run > /home/miller/FreeGuide/logs/freeguide_quadruped-run_seed2.log 2>&1 &
+CUDA_VISIBLE_DEVICES=1 nohup python train.py task=quadruped-run seed=2 freeguide.enabled=true rnd.enabled=false steps=3000000 enable_wandb=false wandb_project=freeguide compile=false save_csv=true save_video=false eval_freq=50000 exp_name=freeguide_quadruped-run > /home/miller/FreeGuide/logs/freeguide_quadruped-run_seed2.log 2>&1 &
 
 wait
 
 # --- Batch 3d: freeguide s3-5 ---
-CUDA_VISIBLE_DEVICES=1 nohup python train.py task=quadruped-run seed=3 freeguide.enabled=true rnd.enabled=false steps=3000000 enable_wandb=false wandb_project=freeguide compile=true save_csv=true save_video=false eval_freq=50000 exp_name=freeguide_quadruped-run > /home/miller/FreeGuide/logs/freeguide_quadruped-run_seed3.log 2>&1 &
+CUDA_VISIBLE_DEVICES=1 nohup python train.py task=quadruped-run seed=3 freeguide.enabled=true rnd.enabled=false steps=3000000 enable_wandb=false wandb_project=freeguide compile=false save_csv=true save_video=false eval_freq=50000 exp_name=freeguide_quadruped-run > /home/miller/FreeGuide/logs/freeguide_quadruped-run_seed3.log 2>&1 &
 
-CUDA_VISIBLE_DEVICES=1 nohup python train.py task=quadruped-run seed=4 freeguide.enabled=true rnd.enabled=false steps=3000000 enable_wandb=false wandb_project=freeguide compile=true save_csv=true save_video=false eval_freq=50000 exp_name=freeguide_quadruped-run > /home/miller/FreeGuide/logs/freeguide_quadruped-run_seed4.log 2>&1 &
+CUDA_VISIBLE_DEVICES=1 nohup python train.py task=quadruped-run seed=4 freeguide.enabled=true rnd.enabled=false steps=3000000 enable_wandb=false wandb_project=freeguide compile=false save_csv=true save_video=false eval_freq=50000 exp_name=freeguide_quadruped-run > /home/miller/FreeGuide/logs/freeguide_quadruped-run_seed4.log 2>&1 &
 
-CUDA_VISIBLE_DEVICES=1 nohup python train.py task=quadruped-run seed=5 freeguide.enabled=true rnd.enabled=false steps=3000000 enable_wandb=false wandb_project=freeguide compile=true save_csv=true save_video=false eval_freq=50000 exp_name=freeguide_quadruped-run > /home/miller/FreeGuide/logs/freeguide_quadruped-run_seed5.log 2>&1 &
+CUDA_VISIBLE_DEVICES=1 nohup python train.py task=quadruped-run seed=5 freeguide.enabled=true rnd.enabled=false steps=3000000 enable_wandb=false wandb_project=freeguide compile=false save_csv=true save_video=false eval_freq=50000 exp_name=freeguide_quadruped-run > /home/miller/FreeGuide/logs/freeguide_quadruped-run_seed5.log 2>&1 &
 
 wait
 ```
@@ -282,44 +302,44 @@ wait
 
 ```bash
 # --- Batch 4a: tdmpc2 seeds 1-4 ---
-CUDA_VISIBLE_DEVICES=1 nohup python train.py task=walker-run seed=1 freeguide.enabled=false rnd.enabled=false steps=3000000 enable_wandb=false wandb_project=freeguide compile=true save_csv=true save_video=false eval_freq=50000 exp_name=tdmpc2_walker-run > /home/miller/FreeGuide/logs/tdmpc2_walker-run_seed1.log 2>&1 &
+CUDA_VISIBLE_DEVICES=1 nohup python train.py task=walker-run seed=1 freeguide.enabled=false rnd.enabled=false steps=3000000 enable_wandb=false wandb_project=freeguide compile=false save_csv=true save_video=false eval_freq=50000 exp_name=tdmpc2_walker-run > /home/miller/FreeGuide/logs/tdmpc2_walker-run_seed1.log 2>&1 &
 
-CUDA_VISIBLE_DEVICES=1 nohup python train.py task=walker-run seed=2 freeguide.enabled=false rnd.enabled=false steps=3000000 enable_wandb=false wandb_project=freeguide compile=true save_csv=true save_video=false eval_freq=50000 exp_name=tdmpc2_walker-run > /home/miller/FreeGuide/logs/tdmpc2_walker-run_seed2.log 2>&1 &
+CUDA_VISIBLE_DEVICES=1 nohup python train.py task=walker-run seed=2 freeguide.enabled=false rnd.enabled=false steps=3000000 enable_wandb=false wandb_project=freeguide compile=false save_csv=true save_video=false eval_freq=50000 exp_name=tdmpc2_walker-run > /home/miller/FreeGuide/logs/tdmpc2_walker-run_seed2.log 2>&1 &
 
-CUDA_VISIBLE_DEVICES=1 nohup python train.py task=walker-run seed=3 freeguide.enabled=false rnd.enabled=false steps=3000000 enable_wandb=false wandb_project=freeguide compile=true save_csv=true save_video=false eval_freq=50000 exp_name=tdmpc2_walker-run > /home/miller/FreeGuide/logs/tdmpc2_walker-run_seed3.log 2>&1 &
+CUDA_VISIBLE_DEVICES=1 nohup python train.py task=walker-run seed=3 freeguide.enabled=false rnd.enabled=false steps=3000000 enable_wandb=false wandb_project=freeguide compile=false save_csv=true save_video=false eval_freq=50000 exp_name=tdmpc2_walker-run > /home/miller/FreeGuide/logs/tdmpc2_walker-run_seed3.log 2>&1 &
 
-CUDA_VISIBLE_DEVICES=1 nohup python train.py task=walker-run seed=4 freeguide.enabled=false rnd.enabled=false steps=3000000 enable_wandb=false wandb_project=freeguide compile=true save_csv=true save_video=false eval_freq=50000 exp_name=tdmpc2_walker-run > /home/miller/FreeGuide/logs/tdmpc2_walker-run_seed4.log 2>&1 &
+CUDA_VISIBLE_DEVICES=1 nohup python train.py task=walker-run seed=4 freeguide.enabled=false rnd.enabled=false steps=3000000 enable_wandb=false wandb_project=freeguide compile=false save_csv=true save_video=false eval_freq=50000 exp_name=tdmpc2_walker-run > /home/miller/FreeGuide/logs/tdmpc2_walker-run_seed4.log 2>&1 &
 
 wait
 
 # --- Batch 4b: tdmpc2 s5 + rnd s1-3 ---
-CUDA_VISIBLE_DEVICES=1 nohup python train.py task=walker-run seed=5 freeguide.enabled=false rnd.enabled=false steps=3000000 enable_wandb=false wandb_project=freeguide compile=true save_csv=true save_video=false eval_freq=50000 exp_name=tdmpc2_walker-run > /home/miller/FreeGuide/logs/tdmpc2_walker-run_seed5.log 2>&1 &
+CUDA_VISIBLE_DEVICES=1 nohup python train.py task=walker-run seed=5 freeguide.enabled=false rnd.enabled=false steps=3000000 enable_wandb=false wandb_project=freeguide compile=false save_csv=true save_video=false eval_freq=50000 exp_name=tdmpc2_walker-run > /home/miller/FreeGuide/logs/tdmpc2_walker-run_seed5.log 2>&1 &
 
-CUDA_VISIBLE_DEVICES=1 nohup python train.py task=walker-run seed=1 freeguide.enabled=false rnd.enabled=true steps=3000000 enable_wandb=false wandb_project=freeguide compile=true save_csv=true save_video=false eval_freq=50000 exp_name=tdmpc2_rnd_walker-run > /home/miller/FreeGuide/logs/tdmpc2_rnd_walker-run_seed1.log 2>&1 &
+CUDA_VISIBLE_DEVICES=1 nohup python train.py task=walker-run seed=1 freeguide.enabled=false rnd.enabled=true steps=3000000 enable_wandb=false wandb_project=freeguide compile=false save_csv=true save_video=false eval_freq=50000 exp_name=tdmpc2_rnd_walker-run > /home/miller/FreeGuide/logs/tdmpc2_rnd_walker-run_seed1.log 2>&1 &
 
-CUDA_VISIBLE_DEVICES=1 nohup python train.py task=walker-run seed=2 freeguide.enabled=false rnd.enabled=true steps=3000000 enable_wandb=false wandb_project=freeguide compile=true save_csv=true save_video=false eval_freq=50000 exp_name=tdmpc2_rnd_walker-run > /home/miller/FreeGuide/logs/tdmpc2_rnd_walker-run_seed2.log 2>&1 &
+CUDA_VISIBLE_DEVICES=1 nohup python train.py task=walker-run seed=2 freeguide.enabled=false rnd.enabled=true steps=3000000 enable_wandb=false wandb_project=freeguide compile=false save_csv=true save_video=false eval_freq=50000 exp_name=tdmpc2_rnd_walker-run > /home/miller/FreeGuide/logs/tdmpc2_rnd_walker-run_seed2.log 2>&1 &
 
-CUDA_VISIBLE_DEVICES=1 nohup python train.py task=walker-run seed=3 freeguide.enabled=false rnd.enabled=true steps=3000000 enable_wandb=false wandb_project=freeguide compile=true save_csv=true save_video=false eval_freq=50000 exp_name=tdmpc2_rnd_walker-run > /home/miller/FreeGuide/logs/tdmpc2_rnd_walker-run_seed3.log 2>&1 &
+CUDA_VISIBLE_DEVICES=1 nohup python train.py task=walker-run seed=3 freeguide.enabled=false rnd.enabled=true steps=3000000 enable_wandb=false wandb_project=freeguide compile=false save_csv=true save_video=false eval_freq=50000 exp_name=tdmpc2_rnd_walker-run > /home/miller/FreeGuide/logs/tdmpc2_rnd_walker-run_seed3.log 2>&1 &
 
 wait
 
 # --- Batch 4c: rnd s4-5 + freeguide s1-2 ---
-CUDA_VISIBLE_DEVICES=1 nohup python train.py task=walker-run seed=4 freeguide.enabled=false rnd.enabled=true steps=3000000 enable_wandb=false wandb_project=freeguide compile=true save_csv=true save_video=false eval_freq=50000 exp_name=tdmpc2_rnd_walker-run > /home/miller/FreeGuide/logs/tdmpc2_rnd_walker-run_seed4.log 2>&1 &
+CUDA_VISIBLE_DEVICES=1 nohup python train.py task=walker-run seed=4 freeguide.enabled=false rnd.enabled=true steps=3000000 enable_wandb=false wandb_project=freeguide compile=false save_csv=true save_video=false eval_freq=50000 exp_name=tdmpc2_rnd_walker-run > /home/miller/FreeGuide/logs/tdmpc2_rnd_walker-run_seed4.log 2>&1 &
 
-CUDA_VISIBLE_DEVICES=1 nohup python train.py task=walker-run seed=5 freeguide.enabled=false rnd.enabled=true steps=3000000 enable_wandb=false wandb_project=freeguide compile=true save_csv=true save_video=false eval_freq=50000 exp_name=tdmpc2_rnd_walker-run > /home/miller/FreeGuide/logs/tdmpc2_rnd_walker-run_seed5.log 2>&1 &
+CUDA_VISIBLE_DEVICES=1 nohup python train.py task=walker-run seed=5 freeguide.enabled=false rnd.enabled=true steps=3000000 enable_wandb=false wandb_project=freeguide compile=false save_csv=true save_video=false eval_freq=50000 exp_name=tdmpc2_rnd_walker-run > /home/miller/FreeGuide/logs/tdmpc2_rnd_walker-run_seed5.log 2>&1 &
 
-CUDA_VISIBLE_DEVICES=1 nohup python train.py task=walker-run seed=1 freeguide.enabled=true rnd.enabled=false steps=3000000 enable_wandb=false wandb_project=freeguide compile=true save_csv=true save_video=false eval_freq=50000 exp_name=freeguide_walker-run > /home/miller/FreeGuide/logs/freeguide_walker-run_seed1.log 2>&1 &
+CUDA_VISIBLE_DEVICES=1 nohup python train.py task=walker-run seed=1 freeguide.enabled=true rnd.enabled=false steps=3000000 enable_wandb=false wandb_project=freeguide compile=false save_csv=true save_video=false eval_freq=50000 exp_name=freeguide_walker-run > /home/miller/FreeGuide/logs/freeguide_walker-run_seed1.log 2>&1 &
 
-CUDA_VISIBLE_DEVICES=1 nohup python train.py task=walker-run seed=2 freeguide.enabled=true rnd.enabled=false steps=3000000 enable_wandb=false wandb_project=freeguide compile=true save_csv=true save_video=false eval_freq=50000 exp_name=freeguide_walker-run > /home/miller/FreeGuide/logs/freeguide_walker-run_seed2.log 2>&1 &
+CUDA_VISIBLE_DEVICES=1 nohup python train.py task=walker-run seed=2 freeguide.enabled=true rnd.enabled=false steps=3000000 enable_wandb=false wandb_project=freeguide compile=false save_csv=true save_video=false eval_freq=50000 exp_name=freeguide_walker-run > /home/miller/FreeGuide/logs/freeguide_walker-run_seed2.log 2>&1 &
 
 wait
 
 # --- Batch 4d: freeguide s3-5 ---
-CUDA_VISIBLE_DEVICES=1 nohup python train.py task=walker-run seed=3 freeguide.enabled=true rnd.enabled=false steps=3000000 enable_wandb=false wandb_project=freeguide compile=true save_csv=true save_video=false eval_freq=50000 exp_name=freeguide_walker-run > /home/miller/FreeGuide/logs/freeguide_walker-run_seed3.log 2>&1 &
+CUDA_VISIBLE_DEVICES=1 nohup python train.py task=walker-run seed=3 freeguide.enabled=true rnd.enabled=false steps=3000000 enable_wandb=false wandb_project=freeguide compile=false save_csv=true save_video=false eval_freq=50000 exp_name=freeguide_walker-run > /home/miller/FreeGuide/logs/freeguide_walker-run_seed3.log 2>&1 &
 
-CUDA_VISIBLE_DEVICES=1 nohup python train.py task=walker-run seed=4 freeguide.enabled=true rnd.enabled=false steps=3000000 enable_wandb=false wandb_project=freeguide compile=true save_csv=true save_video=false eval_freq=50000 exp_name=freeguide_walker-run > /home/miller/FreeGuide/logs/freeguide_walker-run_seed4.log 2>&1 &
+CUDA_VISIBLE_DEVICES=1 nohup python train.py task=walker-run seed=4 freeguide.enabled=true rnd.enabled=false steps=3000000 enable_wandb=false wandb_project=freeguide compile=false save_csv=true save_video=false eval_freq=50000 exp_name=freeguide_walker-run > /home/miller/FreeGuide/logs/freeguide_walker-run_seed4.log 2>&1 &
 
-CUDA_VISIBLE_DEVICES=1 nohup python train.py task=walker-run seed=5 freeguide.enabled=true rnd.enabled=false steps=3000000 enable_wandb=false wandb_project=freeguide compile=true save_csv=true save_video=false eval_freq=50000 exp_name=freeguide_walker-run > /home/miller/FreeGuide/logs/freeguide_walker-run_seed5.log 2>&1 &
+CUDA_VISIBLE_DEVICES=1 nohup python train.py task=walker-run seed=5 freeguide.enabled=true rnd.enabled=false steps=3000000 enable_wandb=false wandb_project=freeguide compile=false save_csv=true save_video=false eval_freq=50000 exp_name=freeguide_walker-run > /home/miller/FreeGuide/logs/freeguide_walker-run_seed5.log 2>&1 &
 
 wait
 ```
@@ -328,44 +348,44 @@ wait
 
 ```bash
 # --- Batch 5a: tdmpc2 seeds 1-4 ---
-CUDA_VISIBLE_DEVICES=2 nohup python train.py task=cheetah-run seed=1 freeguide.enabled=false rnd.enabled=false steps=3000000 enable_wandb=false wandb_project=freeguide compile=true save_csv=true save_video=false eval_freq=50000 exp_name=tdmpc2_cheetah-run > /home/miller/FreeGuide/logs/tdmpc2_cheetah-run_seed1.log 2>&1 &
+CUDA_VISIBLE_DEVICES=2 nohup python train.py task=cheetah-run seed=1 freeguide.enabled=false rnd.enabled=false steps=3000000 enable_wandb=false wandb_project=freeguide compile=false save_csv=true save_video=false eval_freq=50000 exp_name=tdmpc2_cheetah-run > /home/miller/FreeGuide/logs/tdmpc2_cheetah-run_seed1.log 2>&1 &
 
-CUDA_VISIBLE_DEVICES=2 nohup python train.py task=cheetah-run seed=2 freeguide.enabled=false rnd.enabled=false steps=3000000 enable_wandb=false wandb_project=freeguide compile=true save_csv=true save_video=false eval_freq=50000 exp_name=tdmpc2_cheetah-run > /home/miller/FreeGuide/logs/tdmpc2_cheetah-run_seed2.log 2>&1 &
+CUDA_VISIBLE_DEVICES=2 nohup python train.py task=cheetah-run seed=2 freeguide.enabled=false rnd.enabled=false steps=3000000 enable_wandb=false wandb_project=freeguide compile=false save_csv=true save_video=false eval_freq=50000 exp_name=tdmpc2_cheetah-run > /home/miller/FreeGuide/logs/tdmpc2_cheetah-run_seed2.log 2>&1 &
 
-CUDA_VISIBLE_DEVICES=2 nohup python train.py task=cheetah-run seed=3 freeguide.enabled=false rnd.enabled=false steps=3000000 enable_wandb=false wandb_project=freeguide compile=true save_csv=true save_video=false eval_freq=50000 exp_name=tdmpc2_cheetah-run > /home/miller/FreeGuide/logs/tdmpc2_cheetah-run_seed3.log 2>&1 &
+CUDA_VISIBLE_DEVICES=2 nohup python train.py task=cheetah-run seed=3 freeguide.enabled=false rnd.enabled=false steps=3000000 enable_wandb=false wandb_project=freeguide compile=false save_csv=true save_video=false eval_freq=50000 exp_name=tdmpc2_cheetah-run > /home/miller/FreeGuide/logs/tdmpc2_cheetah-run_seed3.log 2>&1 &
 
-CUDA_VISIBLE_DEVICES=2 nohup python train.py task=cheetah-run seed=4 freeguide.enabled=false rnd.enabled=false steps=3000000 enable_wandb=false wandb_project=freeguide compile=true save_csv=true save_video=false eval_freq=50000 exp_name=tdmpc2_cheetah-run > /home/miller/FreeGuide/logs/tdmpc2_cheetah-run_seed4.log 2>&1 &
+CUDA_VISIBLE_DEVICES=2 nohup python train.py task=cheetah-run seed=4 freeguide.enabled=false rnd.enabled=false steps=3000000 enable_wandb=false wandb_project=freeguide compile=false save_csv=true save_video=false eval_freq=50000 exp_name=tdmpc2_cheetah-run > /home/miller/FreeGuide/logs/tdmpc2_cheetah-run_seed4.log 2>&1 &
 
 wait
 
 # --- Batch 5b: tdmpc2 s5 + rnd s1-3 ---
-CUDA_VISIBLE_DEVICES=2 nohup python train.py task=cheetah-run seed=5 freeguide.enabled=false rnd.enabled=false steps=3000000 enable_wandb=false wandb_project=freeguide compile=true save_csv=true save_video=false eval_freq=50000 exp_name=tdmpc2_cheetah-run > /home/miller/FreeGuide/logs/tdmpc2_cheetah-run_seed5.log 2>&1 &
+CUDA_VISIBLE_DEVICES=2 nohup python train.py task=cheetah-run seed=5 freeguide.enabled=false rnd.enabled=false steps=3000000 enable_wandb=false wandb_project=freeguide compile=false save_csv=true save_video=false eval_freq=50000 exp_name=tdmpc2_cheetah-run > /home/miller/FreeGuide/logs/tdmpc2_cheetah-run_seed5.log 2>&1 &
 
-CUDA_VISIBLE_DEVICES=2 nohup python train.py task=cheetah-run seed=1 freeguide.enabled=false rnd.enabled=true steps=3000000 enable_wandb=false wandb_project=freeguide compile=true save_csv=true save_video=false eval_freq=50000 exp_name=tdmpc2_rnd_cheetah-run > /home/miller/FreeGuide/logs/tdmpc2_rnd_cheetah-run_seed1.log 2>&1 &
+CUDA_VISIBLE_DEVICES=2 nohup python train.py task=cheetah-run seed=1 freeguide.enabled=false rnd.enabled=true steps=3000000 enable_wandb=false wandb_project=freeguide compile=false save_csv=true save_video=false eval_freq=50000 exp_name=tdmpc2_rnd_cheetah-run > /home/miller/FreeGuide/logs/tdmpc2_rnd_cheetah-run_seed1.log 2>&1 &
 
-CUDA_VISIBLE_DEVICES=2 nohup python train.py task=cheetah-run seed=2 freeguide.enabled=false rnd.enabled=true steps=3000000 enable_wandb=false wandb_project=freeguide compile=true save_csv=true save_video=false eval_freq=50000 exp_name=tdmpc2_rnd_cheetah-run > /home/miller/FreeGuide/logs/tdmpc2_rnd_cheetah-run_seed2.log 2>&1 &
+CUDA_VISIBLE_DEVICES=2 nohup python train.py task=cheetah-run seed=2 freeguide.enabled=false rnd.enabled=true steps=3000000 enable_wandb=false wandb_project=freeguide compile=false save_csv=true save_video=false eval_freq=50000 exp_name=tdmpc2_rnd_cheetah-run > /home/miller/FreeGuide/logs/tdmpc2_rnd_cheetah-run_seed2.log 2>&1 &
 
-CUDA_VISIBLE_DEVICES=2 nohup python train.py task=cheetah-run seed=3 freeguide.enabled=false rnd.enabled=true steps=3000000 enable_wandb=false wandb_project=freeguide compile=true save_csv=true save_video=false eval_freq=50000 exp_name=tdmpc2_rnd_cheetah-run > /home/miller/FreeGuide/logs/tdmpc2_rnd_cheetah-run_seed3.log 2>&1 &
+CUDA_VISIBLE_DEVICES=2 nohup python train.py task=cheetah-run seed=3 freeguide.enabled=false rnd.enabled=true steps=3000000 enable_wandb=false wandb_project=freeguide compile=false save_csv=true save_video=false eval_freq=50000 exp_name=tdmpc2_rnd_cheetah-run > /home/miller/FreeGuide/logs/tdmpc2_rnd_cheetah-run_seed3.log 2>&1 &
 
 wait
 
 # --- Batch 5c: rnd s4-5 + freeguide s1-2 ---
-CUDA_VISIBLE_DEVICES=2 nohup python train.py task=cheetah-run seed=4 freeguide.enabled=false rnd.enabled=true steps=3000000 enable_wandb=false wandb_project=freeguide compile=true save_csv=true save_video=false eval_freq=50000 exp_name=tdmpc2_rnd_cheetah-run > /home/miller/FreeGuide/logs/tdmpc2_rnd_cheetah-run_seed4.log 2>&1 &
+CUDA_VISIBLE_DEVICES=2 nohup python train.py task=cheetah-run seed=4 freeguide.enabled=false rnd.enabled=true steps=3000000 enable_wandb=false wandb_project=freeguide compile=false save_csv=true save_video=false eval_freq=50000 exp_name=tdmpc2_rnd_cheetah-run > /home/miller/FreeGuide/logs/tdmpc2_rnd_cheetah-run_seed4.log 2>&1 &
 
-CUDA_VISIBLE_DEVICES=2 nohup python train.py task=cheetah-run seed=5 freeguide.enabled=false rnd.enabled=true steps=3000000 enable_wandb=false wandb_project=freeguide compile=true save_csv=true save_video=false eval_freq=50000 exp_name=tdmpc2_rnd_cheetah-run > /home/miller/FreeGuide/logs/tdmpc2_rnd_cheetah-run_seed5.log 2>&1 &
+CUDA_VISIBLE_DEVICES=2 nohup python train.py task=cheetah-run seed=5 freeguide.enabled=false rnd.enabled=true steps=3000000 enable_wandb=false wandb_project=freeguide compile=false save_csv=true save_video=false eval_freq=50000 exp_name=tdmpc2_rnd_cheetah-run > /home/miller/FreeGuide/logs/tdmpc2_rnd_cheetah-run_seed5.log 2>&1 &
 
-CUDA_VISIBLE_DEVICES=2 nohup python train.py task=cheetah-run seed=1 freeguide.enabled=true rnd.enabled=false steps=3000000 enable_wandb=false wandb_project=freeguide compile=true save_csv=true save_video=false eval_freq=50000 exp_name=freeguide_cheetah-run > /home/miller/FreeGuide/logs/freeguide_cheetah-run_seed1.log 2>&1 &
+CUDA_VISIBLE_DEVICES=2 nohup python train.py task=cheetah-run seed=1 freeguide.enabled=true rnd.enabled=false steps=3000000 enable_wandb=false wandb_project=freeguide compile=false save_csv=true save_video=false eval_freq=50000 exp_name=freeguide_cheetah-run > /home/miller/FreeGuide/logs/freeguide_cheetah-run_seed1.log 2>&1 &
 
-CUDA_VISIBLE_DEVICES=2 nohup python train.py task=cheetah-run seed=2 freeguide.enabled=true rnd.enabled=false steps=3000000 enable_wandb=false wandb_project=freeguide compile=true save_csv=true save_video=false eval_freq=50000 exp_name=freeguide_cheetah-run > /home/miller/FreeGuide/logs/freeguide_cheetah-run_seed2.log 2>&1 &
+CUDA_VISIBLE_DEVICES=2 nohup python train.py task=cheetah-run seed=2 freeguide.enabled=true rnd.enabled=false steps=3000000 enable_wandb=false wandb_project=freeguide compile=false save_csv=true save_video=false eval_freq=50000 exp_name=freeguide_cheetah-run > /home/miller/FreeGuide/logs/freeguide_cheetah-run_seed2.log 2>&1 &
 
 wait
 
 # --- Batch 5d: freeguide s3-5 ---
-CUDA_VISIBLE_DEVICES=2 nohup python train.py task=cheetah-run seed=3 freeguide.enabled=true rnd.enabled=false steps=3000000 enable_wandb=false wandb_project=freeguide compile=true save_csv=true save_video=false eval_freq=50000 exp_name=freeguide_cheetah-run > /home/miller/FreeGuide/logs/freeguide_cheetah-run_seed3.log 2>&1 &
+CUDA_VISIBLE_DEVICES=2 nohup python train.py task=cheetah-run seed=3 freeguide.enabled=true rnd.enabled=false steps=3000000 enable_wandb=false wandb_project=freeguide compile=false save_csv=true save_video=false eval_freq=50000 exp_name=freeguide_cheetah-run > /home/miller/FreeGuide/logs/freeguide_cheetah-run_seed3.log 2>&1 &
 
-CUDA_VISIBLE_DEVICES=2 nohup python train.py task=cheetah-run seed=4 freeguide.enabled=true rnd.enabled=false steps=3000000 enable_wandb=false wandb_project=freeguide compile=true save_csv=true save_video=false eval_freq=50000 exp_name=freeguide_cheetah-run > /home/miller/FreeGuide/logs/freeguide_cheetah-run_seed4.log 2>&1 &
+CUDA_VISIBLE_DEVICES=2 nohup python train.py task=cheetah-run seed=4 freeguide.enabled=true rnd.enabled=false steps=3000000 enable_wandb=false wandb_project=freeguide compile=false save_csv=true save_video=false eval_freq=50000 exp_name=freeguide_cheetah-run > /home/miller/FreeGuide/logs/freeguide_cheetah-run_seed4.log 2>&1 &
 
-CUDA_VISIBLE_DEVICES=2 nohup python train.py task=cheetah-run seed=5 freeguide.enabled=true rnd.enabled=false steps=3000000 enable_wandb=false wandb_project=freeguide compile=true save_csv=true save_video=false eval_freq=50000 exp_name=freeguide_cheetah-run > /home/miller/FreeGuide/logs/freeguide_cheetah-run_seed5.log 2>&1 &
+CUDA_VISIBLE_DEVICES=2 nohup python train.py task=cheetah-run seed=5 freeguide.enabled=true rnd.enabled=false steps=3000000 enable_wandb=false wandb_project=freeguide compile=false save_csv=true save_video=false eval_freq=50000 exp_name=freeguide_cheetah-run > /home/miller/FreeGuide/logs/freeguide_cheetah-run_seed5.log 2>&1 &
 
 wait
 ```
@@ -386,85 +406,85 @@ Variants that need running (5 new × 2 tasks × 3 seeds = 30):
 
 ```bash
 # QEV-only (no EDD, no extra params)
-CUDA_VISIBLE_DEVICES=1 nohup python train.py task=walker-run seed=1 freeguide.enabled=true rnd.enabled=false freeguide.use_edd=false freeguide.use_qev=true steps=3000000 enable_wandb=false wandb_project=freeguide compile=true save_csv=true save_video=false eval_freq=50000 exp_name=ablation_qev_only_walker-run > /home/miller/FreeGuide/logs/ablation_qev_only_walker-run_seed1.log 2>&1 &
+CUDA_VISIBLE_DEVICES=1 nohup python train.py task=walker-run seed=1 freeguide.enabled=true rnd.enabled=false freeguide.use_edd=false freeguide.use_qev=true steps=3000000 enable_wandb=false wandb_project=freeguide compile=false save_csv=true save_video=false eval_freq=50000 exp_name=ablation_qev_only_walker-run > /home/miller/FreeGuide/logs/ablation_qev_only_walker-run_seed1.log 2>&1 &
 
-CUDA_VISIBLE_DEVICES=1 nohup python train.py task=walker-run seed=2 freeguide.enabled=true rnd.enabled=false freeguide.use_edd=false freeguide.use_qev=true steps=3000000 enable_wandb=false wandb_project=freeguide compile=true save_csv=true save_video=false eval_freq=50000 exp_name=ablation_qev_only_walker-run > /home/miller/FreeGuide/logs/ablation_qev_only_walker-run_seed2.log 2>&1 &
+CUDA_VISIBLE_DEVICES=1 nohup python train.py task=walker-run seed=2 freeguide.enabled=true rnd.enabled=false freeguide.use_edd=false freeguide.use_qev=true steps=3000000 enable_wandb=false wandb_project=freeguide compile=false save_csv=true save_video=false eval_freq=50000 exp_name=ablation_qev_only_walker-run > /home/miller/FreeGuide/logs/ablation_qev_only_walker-run_seed2.log 2>&1 &
 
-CUDA_VISIBLE_DEVICES=1 nohup python train.py task=walker-run seed=3 freeguide.enabled=true rnd.enabled=false freeguide.use_edd=false freeguide.use_qev=true steps=3000000 enable_wandb=false wandb_project=freeguide compile=true save_csv=true save_video=false eval_freq=50000 exp_name=ablation_qev_only_walker-run > /home/miller/FreeGuide/logs/ablation_qev_only_walker-run_seed3.log 2>&1 &
+CUDA_VISIBLE_DEVICES=1 nohup python train.py task=walker-run seed=3 freeguide.enabled=true rnd.enabled=false freeguide.use_edd=false freeguide.use_qev=true steps=3000000 enable_wandb=false wandb_project=freeguide compile=false save_csv=true save_video=false eval_freq=50000 exp_name=ablation_qev_only_walker-run > /home/miller/FreeGuide/logs/ablation_qev_only_walker-run_seed3.log 2>&1 &
 
-CUDA_VISIBLE_DEVICES=0 nohup python train.py task=humanoid-run seed=1 freeguide.enabled=true rnd.enabled=false freeguide.use_edd=false freeguide.use_qev=true steps=3000000 enable_wandb=false wandb_project=freeguide compile=true save_csv=true save_video=false eval_freq=50000 exp_name=ablation_qev_only_humanoid-run > /home/miller/FreeGuide/logs/ablation_qev_only_humanoid-run_seed1.log 2>&1 &
+CUDA_VISIBLE_DEVICES=0 nohup python train.py task=humanoid-run seed=1 freeguide.enabled=true rnd.enabled=false freeguide.use_edd=false freeguide.use_qev=true steps=3000000 enable_wandb=false wandb_project=freeguide compile=false save_csv=true save_video=false eval_freq=50000 exp_name=ablation_qev_only_humanoid-run > /home/miller/FreeGuide/logs/ablation_qev_only_humanoid-run_seed1.log 2>&1 &
 
 wait
 
-CUDA_VISIBLE_DEVICES=0 nohup python train.py task=humanoid-run seed=2 freeguide.enabled=true rnd.enabled=false freeguide.use_edd=false freeguide.use_qev=true steps=3000000 enable_wandb=false wandb_project=freeguide compile=true save_csv=true save_video=false eval_freq=50000 exp_name=ablation_qev_only_humanoid-run > /home/miller/FreeGuide/logs/ablation_qev_only_humanoid-run_seed2.log 2>&1 &
+CUDA_VISIBLE_DEVICES=0 nohup python train.py task=humanoid-run seed=2 freeguide.enabled=true rnd.enabled=false freeguide.use_edd=false freeguide.use_qev=true steps=3000000 enable_wandb=false wandb_project=freeguide compile=false save_csv=true save_video=false eval_freq=50000 exp_name=ablation_qev_only_humanoid-run > /home/miller/FreeGuide/logs/ablation_qev_only_humanoid-run_seed2.log 2>&1 &
 
-CUDA_VISIBLE_DEVICES=0 nohup python train.py task=humanoid-run seed=3 freeguide.enabled=true rnd.enabled=false freeguide.use_edd=false freeguide.use_qev=true steps=3000000 enable_wandb=false wandb_project=freeguide compile=true save_csv=true save_video=false eval_freq=50000 exp_name=ablation_qev_only_humanoid-run > /home/miller/FreeGuide/logs/ablation_qev_only_humanoid-run_seed3.log 2>&1 &
+CUDA_VISIBLE_DEVICES=0 nohup python train.py task=humanoid-run seed=3 freeguide.enabled=true rnd.enabled=false freeguide.use_edd=false freeguide.use_qev=true steps=3000000 enable_wandb=false wandb_project=freeguide compile=false save_csv=true save_video=false eval_freq=50000 exp_name=ablation_qev_only_humanoid-run > /home/miller/FreeGuide/logs/ablation_qev_only_humanoid-run_seed3.log 2>&1 &
 
 # EDD-only (no QEV)
-CUDA_VISIBLE_DEVICES=1 nohup python train.py task=walker-run seed=1 freeguide.enabled=true rnd.enabled=false freeguide.use_edd=true freeguide.use_qev=false steps=3000000 enable_wandb=false wandb_project=freeguide compile=true save_csv=true save_video=false eval_freq=50000 exp_name=ablation_edd_only_walker-run > /home/miller/FreeGuide/logs/ablation_edd_only_walker-run_seed1.log 2>&1 &
+CUDA_VISIBLE_DEVICES=1 nohup python train.py task=walker-run seed=1 freeguide.enabled=true rnd.enabled=false freeguide.use_edd=true freeguide.use_qev=false steps=3000000 enable_wandb=false wandb_project=freeguide compile=false save_csv=true save_video=false eval_freq=50000 exp_name=ablation_edd_only_walker-run > /home/miller/FreeGuide/logs/ablation_edd_only_walker-run_seed1.log 2>&1 &
 
-CUDA_VISIBLE_DEVICES=1 nohup python train.py task=walker-run seed=2 freeguide.enabled=true rnd.enabled=false freeguide.use_edd=true freeguide.use_qev=false steps=3000000 enable_wandb=false wandb_project=freeguide compile=true save_csv=true save_video=false eval_freq=50000 exp_name=ablation_edd_only_walker-run > /home/miller/FreeGuide/logs/ablation_edd_only_walker-run_seed2.log 2>&1 &
+CUDA_VISIBLE_DEVICES=1 nohup python train.py task=walker-run seed=2 freeguide.enabled=true rnd.enabled=false freeguide.use_edd=true freeguide.use_qev=false steps=3000000 enable_wandb=false wandb_project=freeguide compile=false save_csv=true save_video=false eval_freq=50000 exp_name=ablation_edd_only_walker-run > /home/miller/FreeGuide/logs/ablation_edd_only_walker-run_seed2.log 2>&1 &
 
 wait
 
-CUDA_VISIBLE_DEVICES=1 nohup python train.py task=walker-run seed=3 freeguide.enabled=true rnd.enabled=false freeguide.use_edd=true freeguide.use_qev=false steps=3000000 enable_wandb=false wandb_project=freeguide compile=true save_csv=true save_video=false eval_freq=50000 exp_name=ablation_edd_only_walker-run > /home/miller/FreeGuide/logs/ablation_edd_only_walker-run_seed3.log 2>&1 &
+CUDA_VISIBLE_DEVICES=1 nohup python train.py task=walker-run seed=3 freeguide.enabled=true rnd.enabled=false freeguide.use_edd=true freeguide.use_qev=false steps=3000000 enable_wandb=false wandb_project=freeguide compile=false save_csv=true save_video=false eval_freq=50000 exp_name=ablation_edd_only_walker-run > /home/miller/FreeGuide/logs/ablation_edd_only_walker-run_seed3.log 2>&1 &
 
-CUDA_VISIBLE_DEVICES=1 nohup python train.py task=humanoid-run seed=1 freeguide.enabled=true rnd.enabled=false freeguide.use_edd=true freeguide.use_qev=false steps=3000000 enable_wandb=false wandb_project=freeguide compile=true save_csv=true save_video=false eval_freq=50000 exp_name=ablation_edd_only_humanoid-run > /home/miller/FreeGuide/logs/ablation_edd_only_humanoid-run_seed1.log 2>&1 &
+CUDA_VISIBLE_DEVICES=1 nohup python train.py task=humanoid-run seed=1 freeguide.enabled=true rnd.enabled=false freeguide.use_edd=true freeguide.use_qev=false steps=3000000 enable_wandb=false wandb_project=freeguide compile=false save_csv=true save_video=false eval_freq=50000 exp_name=ablation_edd_only_humanoid-run > /home/miller/FreeGuide/logs/ablation_edd_only_humanoid-run_seed1.log 2>&1 &
 
-CUDA_VISIBLE_DEVICES=1 nohup python train.py task=humanoid-run seed=2 freeguide.enabled=true rnd.enabled=false freeguide.use_edd=true freeguide.use_qev=false steps=3000000 enable_wandb=false wandb_project=freeguide compile=true save_csv=true save_video=false eval_freq=50000 exp_name=ablation_edd_only_humanoid-run > /home/miller/FreeGuide/logs/ablation_edd_only_humanoid-run_seed2.log 2>&1 &
+CUDA_VISIBLE_DEVICES=1 nohup python train.py task=humanoid-run seed=2 freeguide.enabled=true rnd.enabled=false freeguide.use_edd=true freeguide.use_qev=false steps=3000000 enable_wandb=false wandb_project=freeguide compile=false save_csv=true save_video=false eval_freq=50000 exp_name=ablation_edd_only_humanoid-run > /home/miller/FreeGuide/logs/ablation_edd_only_humanoid-run_seed2.log 2>&1 &
 
-CUDA_VISIBLE_DEVICES=1 nohup python train.py task=humanoid-run seed=3 freeguide.enabled=true rnd.enabled=false freeguide.use_edd=true freeguide.use_qev=false steps=3000000 enable_wandb=false wandb_project=freeguide compile=true save_csv=true save_video=false eval_freq=50000 exp_name=ablation_edd_only_humanoid-run > /home/miller/FreeGuide/logs/ablation_edd_only_humanoid-run_seed3.log 2>&1 &
+CUDA_VISIBLE_DEVICES=1 nohup python train.py task=humanoid-run seed=3 freeguide.enabled=true rnd.enabled=false freeguide.use_edd=true freeguide.use_qev=false steps=3000000 enable_wandb=false wandb_project=freeguide compile=false save_csv=true save_video=false eval_freq=50000 exp_name=ablation_edd_only_humanoid-run > /home/miller/FreeGuide/logs/ablation_edd_only_humanoid-run_seed3.log 2>&1 &
 
 wait
 
 # Fixed beta=0.3 (no adaptive beta)
-CUDA_VISIBLE_DEVICES=2 nohup python train.py task=walker-run seed=1 freeguide.enabled=true rnd.enabled=false freeguide.use_adaptive_beta=false freeguide.beta_init=0.3 steps=3000000 enable_wandb=false wandb_project=freeguide compile=true save_csv=true save_video=false eval_freq=50000 exp_name=ablation_fixed_beta_03_walker-run > /home/miller/FreeGuide/logs/ablation_fixed_beta_03_walker-run_seed1.log 2>&1 &
+CUDA_VISIBLE_DEVICES=2 nohup python train.py task=walker-run seed=1 freeguide.enabled=true rnd.enabled=false freeguide.use_adaptive_beta=false freeguide.beta_init=0.3 steps=3000000 enable_wandb=false wandb_project=freeguide compile=false save_csv=true save_video=false eval_freq=50000 exp_name=ablation_fixed_beta_03_walker-run > /home/miller/FreeGuide/logs/ablation_fixed_beta_03_walker-run_seed1.log 2>&1 &
 
-CUDA_VISIBLE_DEVICES=2 nohup python train.py task=walker-run seed=2 freeguide.enabled=true rnd.enabled=false freeguide.use_adaptive_beta=false freeguide.beta_init=0.3 steps=3000000 enable_wandb=false wandb_project=freeguide compile=true save_csv=true save_video=false eval_freq=50000 exp_name=ablation_fixed_beta_03_walker-run > /home/miller/FreeGuide/logs/ablation_fixed_beta_03_walker-run_seed2.log 2>&1 &
+CUDA_VISIBLE_DEVICES=2 nohup python train.py task=walker-run seed=2 freeguide.enabled=true rnd.enabled=false freeguide.use_adaptive_beta=false freeguide.beta_init=0.3 steps=3000000 enable_wandb=false wandb_project=freeguide compile=false save_csv=true save_video=false eval_freq=50000 exp_name=ablation_fixed_beta_03_walker-run > /home/miller/FreeGuide/logs/ablation_fixed_beta_03_walker-run_seed2.log 2>&1 &
 
-CUDA_VISIBLE_DEVICES=2 nohup python train.py task=walker-run seed=3 freeguide.enabled=true rnd.enabled=false freeguide.use_adaptive_beta=false freeguide.beta_init=0.3 steps=3000000 enable_wandb=false wandb_project=freeguide compile=true save_csv=true save_video=false eval_freq=50000 exp_name=ablation_fixed_beta_03_walker-run > /home/miller/FreeGuide/logs/ablation_fixed_beta_03_walker-run_seed3.log 2>&1 &
+CUDA_VISIBLE_DEVICES=2 nohup python train.py task=walker-run seed=3 freeguide.enabled=true rnd.enabled=false freeguide.use_adaptive_beta=false freeguide.beta_init=0.3 steps=3000000 enable_wandb=false wandb_project=freeguide compile=false save_csv=true save_video=false eval_freq=50000 exp_name=ablation_fixed_beta_03_walker-run > /home/miller/FreeGuide/logs/ablation_fixed_beta_03_walker-run_seed3.log 2>&1 &
 
-CUDA_VISIBLE_DEVICES=2 nohup python train.py task=humanoid-run seed=1 freeguide.enabled=true rnd.enabled=false freeguide.use_adaptive_beta=false freeguide.beta_init=0.3 steps=3000000 enable_wandb=false wandb_project=freeguide compile=true save_csv=true save_video=false eval_freq=50000 exp_name=ablation_fixed_beta_03_humanoid-run > /home/miller/FreeGuide/logs/ablation_fixed_beta_03_humanoid-run_seed1.log 2>&1 &
+CUDA_VISIBLE_DEVICES=2 nohup python train.py task=humanoid-run seed=1 freeguide.enabled=true rnd.enabled=false freeguide.use_adaptive_beta=false freeguide.beta_init=0.3 steps=3000000 enable_wandb=false wandb_project=freeguide compile=false save_csv=true save_video=false eval_freq=50000 exp_name=ablation_fixed_beta_03_humanoid-run > /home/miller/FreeGuide/logs/ablation_fixed_beta_03_humanoid-run_seed1.log 2>&1 &
 
 wait
 
-CUDA_VISIBLE_DEVICES=2 nohup python train.py task=humanoid-run seed=2 freeguide.enabled=true rnd.enabled=false freeguide.use_adaptive_beta=false freeguide.beta_init=0.3 steps=3000000 enable_wandb=false wandb_project=freeguide compile=true save_csv=true save_video=false eval_freq=50000 exp_name=ablation_fixed_beta_03_humanoid-run > /home/miller/FreeGuide/logs/ablation_fixed_beta_03_humanoid-run_seed2.log 2>&1 &
+CUDA_VISIBLE_DEVICES=2 nohup python train.py task=humanoid-run seed=2 freeguide.enabled=true rnd.enabled=false freeguide.use_adaptive_beta=false freeguide.beta_init=0.3 steps=3000000 enable_wandb=false wandb_project=freeguide compile=false save_csv=true save_video=false eval_freq=50000 exp_name=ablation_fixed_beta_03_humanoid-run > /home/miller/FreeGuide/logs/ablation_fixed_beta_03_humanoid-run_seed2.log 2>&1 &
 
-CUDA_VISIBLE_DEVICES=2 nohup python train.py task=humanoid-run seed=3 freeguide.enabled=true rnd.enabled=false freeguide.use_adaptive_beta=false freeguide.beta_init=0.3 steps=3000000 enable_wandb=false wandb_project=freeguide compile=true save_csv=true save_video=false eval_freq=50000 exp_name=ablation_fixed_beta_03_humanoid-run > /home/miller/FreeGuide/logs/ablation_fixed_beta_03_humanoid-run_seed3.log 2>&1 &
+CUDA_VISIBLE_DEVICES=2 nohup python train.py task=humanoid-run seed=3 freeguide.enabled=true rnd.enabled=false freeguide.use_adaptive_beta=false freeguide.beta_init=0.3 steps=3000000 enable_wandb=false wandb_project=freeguide compile=false save_csv=true save_video=false eval_freq=50000 exp_name=ablation_fixed_beta_03_humanoid-run > /home/miller/FreeGuide/logs/ablation_fixed_beta_03_humanoid-run_seed3.log 2>&1 &
 
 wait
 
 # Fixed beta=0.1 (no adaptive beta)
-CUDA_VISIBLE_DEVICES=2 nohup python train.py task=walker-run seed=1 freeguide.enabled=true rnd.enabled=false freeguide.use_adaptive_beta=false freeguide.beta_init=0.1 steps=3000000 enable_wandb=false wandb_project=freeguide compile=true save_csv=true save_video=false eval_freq=50000 exp_name=ablation_fixed_beta_01_walker-run > /home/miller/FreeGuide/logs/ablation_fixed_beta_01_walker-run_seed1.log 2>&1 &
+CUDA_VISIBLE_DEVICES=2 nohup python train.py task=walker-run seed=1 freeguide.enabled=true rnd.enabled=false freeguide.use_adaptive_beta=false freeguide.beta_init=0.1 steps=3000000 enable_wandb=false wandb_project=freeguide compile=false save_csv=true save_video=false eval_freq=50000 exp_name=ablation_fixed_beta_01_walker-run > /home/miller/FreeGuide/logs/ablation_fixed_beta_01_walker-run_seed1.log 2>&1 &
 
-CUDA_VISIBLE_DEVICES=2 nohup python train.py task=walker-run seed=2 freeguide.enabled=true rnd.enabled=false freeguide.use_adaptive_beta=false freeguide.beta_init=0.1 steps=3000000 enable_wandb=false wandb_project=freeguide compile=true save_csv=true save_video=false eval_freq=50000 exp_name=ablation_fixed_beta_01_walker-run > /home/miller/FreeGuide/logs/ablation_fixed_beta_01_walker-run_seed2.log 2>&1 &
+CUDA_VISIBLE_DEVICES=2 nohup python train.py task=walker-run seed=2 freeguide.enabled=true rnd.enabled=false freeguide.use_adaptive_beta=false freeguide.beta_init=0.1 steps=3000000 enable_wandb=false wandb_project=freeguide compile=false save_csv=true save_video=false eval_freq=50000 exp_name=ablation_fixed_beta_01_walker-run > /home/miller/FreeGuide/logs/ablation_fixed_beta_01_walker-run_seed2.log 2>&1 &
 
-CUDA_VISIBLE_DEVICES=2 nohup python train.py task=walker-run seed=3 freeguide.enabled=true rnd.enabled=false freeguide.use_adaptive_beta=false freeguide.beta_init=0.1 steps=3000000 enable_wandb=false wandb_project=freeguide compile=true save_csv=true save_video=false eval_freq=50000 exp_name=ablation_fixed_beta_01_walker-run > /home/miller/FreeGuide/logs/ablation_fixed_beta_01_walker-run_seed3.log 2>&1 &
+CUDA_VISIBLE_DEVICES=2 nohup python train.py task=walker-run seed=3 freeguide.enabled=true rnd.enabled=false freeguide.use_adaptive_beta=false freeguide.beta_init=0.1 steps=3000000 enable_wandb=false wandb_project=freeguide compile=false save_csv=true save_video=false eval_freq=50000 exp_name=ablation_fixed_beta_01_walker-run > /home/miller/FreeGuide/logs/ablation_fixed_beta_01_walker-run_seed3.log 2>&1 &
 
-CUDA_VISIBLE_DEVICES=2 nohup python train.py task=humanoid-run seed=1 freeguide.enabled=true rnd.enabled=false freeguide.use_adaptive_beta=false freeguide.beta_init=0.1 steps=3000000 enable_wandb=false wandb_project=freeguide compile=true save_csv=true save_video=false eval_freq=50000 exp_name=ablation_fixed_beta_01_humanoid-run > /home/miller/FreeGuide/logs/ablation_fixed_beta_01_humanoid-run_seed1.log 2>&1 &
+CUDA_VISIBLE_DEVICES=2 nohup python train.py task=humanoid-run seed=1 freeguide.enabled=true rnd.enabled=false freeguide.use_adaptive_beta=false freeguide.beta_init=0.1 steps=3000000 enable_wandb=false wandb_project=freeguide compile=false save_csv=true save_video=false eval_freq=50000 exp_name=ablation_fixed_beta_01_humanoid-run > /home/miller/FreeGuide/logs/ablation_fixed_beta_01_humanoid-run_seed1.log 2>&1 &
 
 wait
 
-CUDA_VISIBLE_DEVICES=2 nohup python train.py task=humanoid-run seed=2 freeguide.enabled=true rnd.enabled=false freeguide.use_adaptive_beta=false freeguide.beta_init=0.1 steps=3000000 enable_wandb=false wandb_project=freeguide compile=true save_csv=true save_video=false eval_freq=50000 exp_name=ablation_fixed_beta_01_humanoid-run > /home/miller/FreeGuide/logs/ablation_fixed_beta_01_humanoid-run_seed2.log 2>&1 &
+CUDA_VISIBLE_DEVICES=2 nohup python train.py task=humanoid-run seed=2 freeguide.enabled=true rnd.enabled=false freeguide.use_adaptive_beta=false freeguide.beta_init=0.1 steps=3000000 enable_wandb=false wandb_project=freeguide compile=false save_csv=true save_video=false eval_freq=50000 exp_name=ablation_fixed_beta_01_humanoid-run > /home/miller/FreeGuide/logs/ablation_fixed_beta_01_humanoid-run_seed2.log 2>&1 &
 
-CUDA_VISIBLE_DEVICES=2 nohup python train.py task=humanoid-run seed=3 freeguide.enabled=true rnd.enabled=false freeguide.use_adaptive_beta=false freeguide.beta_init=0.1 steps=3000000 enable_wandb=false wandb_project=freeguide compile=true save_csv=true save_video=false eval_freq=50000 exp_name=ablation_fixed_beta_01_humanoid-run > /home/miller/FreeGuide/logs/ablation_fixed_beta_01_humanoid-run_seed3.log 2>&1 &
+CUDA_VISIBLE_DEVICES=2 nohup python train.py task=humanoid-run seed=3 freeguide.enabled=true rnd.enabled=false freeguide.use_adaptive_beta=false freeguide.beta_init=0.1 steps=3000000 enable_wandb=false wandb_project=freeguide compile=false save_csv=true save_video=false eval_freq=50000 exp_name=ablation_fixed_beta_01_humanoid-run > /home/miller/FreeGuide/logs/ablation_fixed_beta_01_humanoid-run_seed3.log 2>&1 &
 
 wait
 
 # Fixed beta=0.5 (no adaptive beta)
-CUDA_VISIBLE_DEVICES=2 nohup python train.py task=walker-run seed=1 freeguide.enabled=true rnd.enabled=false freeguide.use_adaptive_beta=false freeguide.beta_init=0.5 steps=3000000 enable_wandb=false wandb_project=freeguide compile=true save_csv=true save_video=false eval_freq=50000 exp_name=ablation_fixed_beta_05_walker-run > /home/miller/FreeGuide/logs/ablation_fixed_beta_05_walker-run_seed1.log 2>&1 &
+CUDA_VISIBLE_DEVICES=2 nohup python train.py task=walker-run seed=1 freeguide.enabled=true rnd.enabled=false freeguide.use_adaptive_beta=false freeguide.beta_init=0.5 steps=3000000 enable_wandb=false wandb_project=freeguide compile=false save_csv=true save_video=false eval_freq=50000 exp_name=ablation_fixed_beta_05_walker-run > /home/miller/FreeGuide/logs/ablation_fixed_beta_05_walker-run_seed1.log 2>&1 &
 
-CUDA_VISIBLE_DEVICES=2 nohup python train.py task=walker-run seed=2 freeguide.enabled=true rnd.enabled=false freeguide.use_adaptive_beta=false freeguide.beta_init=0.5 steps=3000000 enable_wandb=false wandb_project=freeguide compile=true save_csv=true save_video=false eval_freq=50000 exp_name=ablation_fixed_beta_05_walker-run > /home/miller/FreeGuide/logs/ablation_fixed_beta_05_walker-run_seed2.log 2>&1 &
+CUDA_VISIBLE_DEVICES=2 nohup python train.py task=walker-run seed=2 freeguide.enabled=true rnd.enabled=false freeguide.use_adaptive_beta=false freeguide.beta_init=0.5 steps=3000000 enable_wandb=false wandb_project=freeguide compile=false save_csv=true save_video=false eval_freq=50000 exp_name=ablation_fixed_beta_05_walker-run > /home/miller/FreeGuide/logs/ablation_fixed_beta_05_walker-run_seed2.log 2>&1 &
 
-CUDA_VISIBLE_DEVICES=2 nohup python train.py task=walker-run seed=3 freeguide.enabled=true rnd.enabled=false freeguide.use_adaptive_beta=false freeguide.beta_init=0.5 steps=3000000 enable_wandb=false wandb_project=freeguide compile=true save_csv=true save_video=false eval_freq=50000 exp_name=ablation_fixed_beta_05_walker-run > /home/miller/FreeGuide/logs/ablation_fixed_beta_05_walker-run_seed3.log 2>&1 &
+CUDA_VISIBLE_DEVICES=2 nohup python train.py task=walker-run seed=3 freeguide.enabled=true rnd.enabled=false freeguide.use_adaptive_beta=false freeguide.beta_init=0.5 steps=3000000 enable_wandb=false wandb_project=freeguide compile=false save_csv=true save_video=false eval_freq=50000 exp_name=ablation_fixed_beta_05_walker-run > /home/miller/FreeGuide/logs/ablation_fixed_beta_05_walker-run_seed3.log 2>&1 &
 
-CUDA_VISIBLE_DEVICES=2 nohup python train.py task=humanoid-run seed=1 freeguide.enabled=true rnd.enabled=false freeguide.use_adaptive_beta=false freeguide.beta_init=0.5 steps=3000000 enable_wandb=false wandb_project=freeguide compile=true save_csv=true save_video=false eval_freq=50000 exp_name=ablation_fixed_beta_05_humanoid-run > /home/miller/FreeGuide/logs/ablation_fixed_beta_05_humanoid-run_seed1.log 2>&1 &
+CUDA_VISIBLE_DEVICES=2 nohup python train.py task=humanoid-run seed=1 freeguide.enabled=true rnd.enabled=false freeguide.use_adaptive_beta=false freeguide.beta_init=0.5 steps=3000000 enable_wandb=false wandb_project=freeguide compile=false save_csv=true save_video=false eval_freq=50000 exp_name=ablation_fixed_beta_05_humanoid-run > /home/miller/FreeGuide/logs/ablation_fixed_beta_05_humanoid-run_seed1.log 2>&1 &
 
 wait
 
-CUDA_VISIBLE_DEVICES=2 nohup python train.py task=humanoid-run seed=2 freeguide.enabled=true rnd.enabled=false freeguide.use_adaptive_beta=false freeguide.beta_init=0.5 steps=3000000 enable_wandb=false wandb_project=freeguide compile=true save_csv=true save_video=false eval_freq=50000 exp_name=ablation_fixed_beta_05_humanoid-run > /home/miller/FreeGuide/logs/ablation_fixed_beta_05_humanoid-run_seed2.log 2>&1 &
+CUDA_VISIBLE_DEVICES=2 nohup python train.py task=humanoid-run seed=2 freeguide.enabled=true rnd.enabled=false freeguide.use_adaptive_beta=false freeguide.beta_init=0.5 steps=3000000 enable_wandb=false wandb_project=freeguide compile=false save_csv=true save_video=false eval_freq=50000 exp_name=ablation_fixed_beta_05_humanoid-run > /home/miller/FreeGuide/logs/ablation_fixed_beta_05_humanoid-run_seed2.log 2>&1 &
 
-CUDA_VISIBLE_DEVICES=2 nohup python train.py task=humanoid-run seed=3 freeguide.enabled=true rnd.enabled=false freeguide.use_adaptive_beta=false freeguide.beta_init=0.5 steps=3000000 enable_wandb=false wandb_project=freeguide compile=true save_csv=true save_video=false eval_freq=50000 exp_name=ablation_fixed_beta_05_humanoid-run > /home/miller/FreeGuide/logs/ablation_fixed_beta_05_humanoid-run_seed3.log 2>&1 &
+CUDA_VISIBLE_DEVICES=2 nohup python train.py task=humanoid-run seed=3 freeguide.enabled=true rnd.enabled=false freeguide.use_adaptive_beta=false freeguide.beta_init=0.5 steps=3000000 enable_wandb=false wandb_project=freeguide compile=false save_csv=true save_video=false eval_freq=50000 exp_name=ablation_fixed_beta_05_humanoid-run > /home/miller/FreeGuide/logs/ablation_fixed_beta_05_humanoid-run_seed3.log 2>&1 &
 
 wait
 ```
@@ -475,20 +495,20 @@ Task: walker-run. Seeds: 1, 2, 3. K=3 results reuse P1's `freeguide_walker-run` 
 
 ```bash
 # K=2
-CUDA_VISIBLE_DEVICES=0 nohup python train.py task=walker-run seed=1 freeguide.enabled=true rnd.enabled=false freeguide.ensemble_K=2 steps=3000000 enable_wandb=false wandb_project=freeguide compile=true save_csv=true save_video=false eval_freq=50000 exp_name=ablation_ensemble_K2_walker-run > /home/miller/FreeGuide/logs/ablation_ensemble_K2_walker-run_seed1.log 2>&1 &
+CUDA_VISIBLE_DEVICES=0 nohup python train.py task=walker-run seed=1 freeguide.enabled=true rnd.enabled=false freeguide.ensemble_K=2 steps=3000000 enable_wandb=false wandb_project=freeguide compile=false save_csv=true save_video=false eval_freq=50000 exp_name=ablation_ensemble_K2_walker-run > /home/miller/FreeGuide/logs/ablation_ensemble_K2_walker-run_seed1.log 2>&1 &
 
-CUDA_VISIBLE_DEVICES=0 nohup python train.py task=walker-run seed=2 freeguide.enabled=true rnd.enabled=false freeguide.ensemble_K=2 steps=3000000 enable_wandb=false wandb_project=freeguide compile=true save_csv=true save_video=false eval_freq=50000 exp_name=ablation_ensemble_K2_walker-run > /home/miller/FreeGuide/logs/ablation_ensemble_K2_walker-run_seed2.log 2>&1 &
+CUDA_VISIBLE_DEVICES=0 nohup python train.py task=walker-run seed=2 freeguide.enabled=true rnd.enabled=false freeguide.ensemble_K=2 steps=3000000 enable_wandb=false wandb_project=freeguide compile=false save_csv=true save_video=false eval_freq=50000 exp_name=ablation_ensemble_K2_walker-run > /home/miller/FreeGuide/logs/ablation_ensemble_K2_walker-run_seed2.log 2>&1 &
 
-CUDA_VISIBLE_DEVICES=0 nohup python train.py task=walker-run seed=3 freeguide.enabled=true rnd.enabled=false freeguide.ensemble_K=2 steps=3000000 enable_wandb=false wandb_project=freeguide compile=true save_csv=true save_video=false eval_freq=50000 exp_name=ablation_ensemble_K2_walker-run > /home/miller/FreeGuide/logs/ablation_ensemble_K2_walker-run_seed3.log 2>&1 &
+CUDA_VISIBLE_DEVICES=0 nohup python train.py task=walker-run seed=3 freeguide.enabled=true rnd.enabled=false freeguide.ensemble_K=2 steps=3000000 enable_wandb=false wandb_project=freeguide compile=false save_csv=true save_video=false eval_freq=50000 exp_name=ablation_ensemble_K2_walker-run > /home/miller/FreeGuide/logs/ablation_ensemble_K2_walker-run_seed3.log 2>&1 &
 
 # K=5
-CUDA_VISIBLE_DEVICES=1 nohup python train.py task=walker-run seed=1 freeguide.enabled=true rnd.enabled=false freeguide.ensemble_K=5 steps=3000000 enable_wandb=false wandb_project=freeguide compile=true save_csv=true save_video=false eval_freq=50000 exp_name=ablation_ensemble_K5_walker-run > /home/miller/FreeGuide/logs/ablation_ensemble_K5_walker-run_seed1.log 2>&1 &
+CUDA_VISIBLE_DEVICES=1 nohup python train.py task=walker-run seed=1 freeguide.enabled=true rnd.enabled=false freeguide.ensemble_K=5 steps=3000000 enable_wandb=false wandb_project=freeguide compile=false save_csv=true save_video=false eval_freq=50000 exp_name=ablation_ensemble_K5_walker-run > /home/miller/FreeGuide/logs/ablation_ensemble_K5_walker-run_seed1.log 2>&1 &
 
 wait
 
-CUDA_VISIBLE_DEVICES=1 nohup python train.py task=walker-run seed=2 freeguide.enabled=true rnd.enabled=false freeguide.ensemble_K=5 steps=3000000 enable_wandb=false wandb_project=freeguide compile=true save_csv=true save_video=false eval_freq=50000 exp_name=ablation_ensemble_K5_walker-run > /home/miller/FreeGuide/logs/ablation_ensemble_K5_walker-run_seed2.log 2>&1 &
+CUDA_VISIBLE_DEVICES=1 nohup python train.py task=walker-run seed=2 freeguide.enabled=true rnd.enabled=false freeguide.ensemble_K=5 steps=3000000 enable_wandb=false wandb_project=freeguide compile=false save_csv=true save_video=false eval_freq=50000 exp_name=ablation_ensemble_K5_walker-run > /home/miller/FreeGuide/logs/ablation_ensemble_K5_walker-run_seed2.log 2>&1 &
 
-CUDA_VISIBLE_DEVICES=1 nohup python train.py task=walker-run seed=3 freeguide.enabled=true rnd.enabled=false freeguide.ensemble_K=5 steps=3000000 enable_wandb=false wandb_project=freeguide compile=true save_csv=true save_video=false eval_freq=50000 exp_name=ablation_ensemble_K5_walker-run > /home/miller/FreeGuide/logs/ablation_ensemble_K5_walker-run_seed3.log 2>&1 &
+CUDA_VISIBLE_DEVICES=1 nohup python train.py task=walker-run seed=3 freeguide.enabled=true rnd.enabled=false freeguide.ensemble_K=5 steps=3000000 enable_wandb=false wandb_project=freeguide compile=false save_csv=true save_video=false eval_freq=50000 exp_name=ablation_ensemble_K5_walker-run > /home/miller/FreeGuide/logs/ablation_ensemble_K5_walker-run_seed3.log 2>&1 &
 
 wait
 ```

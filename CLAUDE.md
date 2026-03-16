@@ -33,12 +33,37 @@ FreeGuide 在 TD-MPC2 的 MPPI 规划器中注入 Expected Free Energy 评分，
 ### 服务器执行经验
 
 - 旧版 `gym` 会打印弃用警告，但当前 `dm_control` 训练可正常继续，这个警告目前不是阻塞错误
+- 当前环境下 `torch.compile` / `compile=true` 与 `torchrl+tensordict` 组合会导致 `tdmpc2_rnd` 在首次 `50k eval` 后触发 `CUDAGraphs` 覆写错误；服务器正式实验默认改为 `compile=false`
 - `check_progress.sh` 通过 `pgrep exp_name=...` 识别进程，会把同名不同 seed 的实验误算成都在跑；做状态汇报时要交叉参考 GPU 进程和 `train.csv`
 - `logs/failed_experiments.txt` 里如果出现早期调度试错留下的 `incomplete` 记录，不要直接当成 NaN/OOM 失败；必须结合当前日志和活跃进程二次确认
 - 在 Codex / IDE 终端环境里，如果执行器会在命令返回后回收后台子进程，则必须用**持久 PTY 会话**托管外层 orchestration shell；仅靠一次性 `nohup ... &` 可能留不住总控进程
 - **默认规则更新**：后续凡是在服务器上跑长时间实验、批量实验、自动串行推进实验，外层总控默认放在 `tmux` 里运行；不要再把服务器实验总控默认挂在一次性 IDE/agent 会话上
 - 推荐做法：`tmux new-session -d -s <session_name> 'bash ...'`
 - 单个训练进程仍然可以继续按协议用 `nohup python train.py ... &` 启动，但**总控层**默认归 `tmux`
+
+### 2026-03-16 FreeGuide / RND 踩坑记录
+
+以下问题已经定位并修复；**修复前**的 FreeGuide / RND 结果不能和当前结果混用：
+
+- `AdaptiveBeta.calibration_steps` 原先按 `update()` 调用次数累计，实际变成按 episode 数，而不是论文设定的 environment steps
+- `AdaptiveBeta` 更新符号原先写反：当信息增益高于 target 时，`beta` 应上升而不是下降
+- FreeGuide 的运行统计原先只使用 planning horizon 最后一个 step 的 `ig_raw`，而不是整条轨迹的 epistemic return
+- FreeGuide 规划原先把 TD-MPC2 主 dynamics 替换成了 ensemble mean；当前实现已改回：
+  - rollout transition 继续使用 TD-MPC2 原始主 dynamics
+  - ensemble 只负责估计 disagreement / epistemic term
+- `freeguide/info_gain_normalized` 原先记录的是中心化量的均值，理论上会长期接近 0；当前改为记录缩放后 epistemic 项的绝对幅值均值
+- 批调度原先在某个 run 崩溃但未达 `2.9M` step 时可能无限等待；当前 `server_batch_lib.sh` 已修正为失败后跳出等待并进入恢复/记录阶段
+
+### 当前有效实验的判定
+
+当前论文可用结果必须同时满足：
+
+- 启动时间在 2026-03-16 修复之后
+- 结果目录已清空后重新启动
+- 使用修正后的 `tdmpc2/tdmpc2/tdmpc2.py`
+- 使用修正后的 `trainer/online_trainer.py`
+- 使用修正后的 `experiments/scripts/server_batch_lib.sh`
+- 使用 `compile=false`
 
 ## 下载源（必须遵守）
 
@@ -559,7 +584,7 @@ GPU 2: cheetah-run 的实验 + P2 消融实验
 
 **所有实验的公共参数**：
 ```
-steps=3000000 enable_wandb=false wandb_project=freeguide compile=true save_csv=true save_video=false eval_freq=50000
+steps=3000000 enable_wandb=false wandb_project=freeguide compile=false save_csv=true save_video=false eval_freq=50000
 ```
 
 **`run_p1_main.sh`**：P1 全部 75 个实验

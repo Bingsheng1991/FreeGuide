@@ -114,7 +114,7 @@ class OnlineTrainer(Trainer):
 						'Set `episodic=true` to enable support for terminations.')
 					# FreeGuide: update adaptive beta once per episode
 					if hasattr(self.agent, 'update_freeguide_beta'):
-						self.agent.update_freeguide_beta()
+						self.agent.update_freeguide_beta(env_step=self._step)
 					train_metrics.update(
 						episode_reward=torch.tensor([td['reward'] for td in self._tds[1:]]).sum(),
 						episode_success=info['success'],

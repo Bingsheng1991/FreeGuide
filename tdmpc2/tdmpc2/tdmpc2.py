@@ -24,15 +24,16 @@ class AdaptiveBeta:
 		self.calibration_steps = fg['calibration_steps']
 		self.enabled = fg['use_adaptive_beta']
 
-	def update(self, ig_mean):
+	def update(self, ig_mean, env_step=None):
 		if not self.enabled:
 			return self.beta
 		self._step += 1
 		self.ema = ig_mean if self.ema is None else 0.99 * self.ema + 0.01 * ig_mean
-		if self._step >= self.calibration_steps and self.target is None:
+		calib_progress = env_step if env_step is not None else self._step
+		if calib_progress >= self.calibration_steps and self.target is None:
 			self.target = self.rho * self.ema
 		if self.target is not None:
-			self.beta -= self.lr * (self.ema - self.target)
+			self.beta += self.lr * (self.ema - self.target)
 			self.beta = max(self.beta_min, min(self.beta_max, self.beta))
 		return self.beta
 
@@ -238,16 +239,17 @@ class TDMPC2(torch.nn.Module):
 
 		total_edd = 0.0
 		total_qev = 0.0
+		ig_terms = []
 
 		for t in range(self.cfg.horizon):
 			reward = math.two_hot_inv(self.model.reward(z, actions[t], task), self.cfg)
 
-			# Next state prediction: use ensemble mean if available, else main dynamics
+			# Keep TD-MPC2's main dynamics for planning; use the ensemble only
+			# to estimate epistemic uncertainty.
 			edd = torch.zeros(self.cfg.num_samples, device=z.device)
 			if self._has_ensemble:
-				z_next, edd = self.model.ensemble_dynamics(z, actions[t], task)
-			else:
-				z_next = self.model.next(z, actions[t], task)
+				_, edd = self.model.ensemble_dynamics(z, actions[t], task)
+			z_next = self.model.next(z, actions[t], task)
 
 			# Q-value ensemble variance (epistemic uncertainty in value)
 			qev = torch.zeros(self.cfg.num_samples, device=z.device)
@@ -267,6 +269,7 @@ class TDMPC2(torch.nn.Module):
 			G_extrinsic = G_extrinsic + discount * (1 - termination) * reward
 			survival = (1 - termination).squeeze(-1)
 			G_epistemic = G_epistemic + discount * survival * ig_raw
+			ig_terms.append(discount * survival * ig_raw)
 
 			total_edd += edd.mean().item()
 			total_qev += qev.mean().item()
@@ -282,9 +285,11 @@ class TDMPC2(torch.nn.Module):
 		terminal_value = self.model.Q(z, action, task, return_type='avg')
 		G_extrinsic = G_extrinsic + discount * (1 - termination) * terminal_value
 
-		# Update running stats (EMA) for logging purposes
-		batch_mean = ig_raw.mean().item()
-		batch_var = ig_raw.var().item()
+		# Update running stats using trajectory-level epistemic value rather than
+		# only the last planning step.
+		ig_per_traj = torch.stack(ig_terms, dim=0).sum(0) / self.cfg.horizon
+		batch_mean = ig_per_traj.mean().item()
+		batch_var = ig_per_traj.var().item()
 		self._ig_mean = 0.99 * self._ig_mean + 0.01 * batch_mean
 		self._ig_std = (0.99 * self._ig_std ** 2 + 0.01 * batch_var) ** 0.5
 		self._ig_count += 1
@@ -311,8 +316,8 @@ class TDMPC2(torch.nn.Module):
 		self._diag_J_ext = G_ext_flat
 		self._diag_J_epi = G_epistemic
 		self._diag_beta = beta
-		self._diag_ig_raw_mean = ig_raw.mean().item()
-		self._diag_ig_norm_mean = epi_scaled.mean().item()
+		self._diag_ig_raw_mean = batch_mean
+		self._diag_ig_norm_mean = epi_scaled.abs().mean().item()
 		self._diag_epi_std = G_epistemic.std().item()
 		self._diag_ext_std = G_ext_flat.std().item()
 		self._diag_target_std = target_std.item() if isinstance(target_std, torch.Tensor) else target_std
@@ -320,7 +325,7 @@ class TDMPC2(torch.nn.Module):
 		# Update logging accumulators
 		self._fg_log['info_gain_edd'] = total_edd / self.cfg.horizon
 		self._fg_log['info_gain_qev'] = total_qev / self.cfg.horizon
-		self._fg_log['info_gain_normalized'] = epi_scaled.mean().item()
+		self._fg_log['info_gain_normalized'] = epi_scaled.abs().mean().item()
 		self._fg_log['beta'] = beta
 		self._fg_log['ig_running_mean'] = self._ig_mean
 		self._fg_log['ig_running_std'] = self._ig_std
@@ -603,11 +608,11 @@ class TDMPC2(torch.nn.Module):
 		self._fg_log['ensemble_loss'] = loss_val
 		return loss_val
 
-	def update_freeguide_beta(self):
+	def update_freeguide_beta(self, env_step=None):
 		"""Update adaptive beta (call once per episode)."""
 		if self._freeguide_enabled:
 			ig_mean = self._fg_log.get('ig_running_mean', 0.0)
-			self.adaptive_beta.update(ig_mean)
+			self.adaptive_beta.update(ig_mean, env_step=env_step)
 			self._fg_log['beta'] = self.adaptive_beta.beta
 
 	def get_freeguide_metrics(self):

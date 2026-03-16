@@ -11,6 +11,13 @@ FreeGuide injects an Expected Free Energy (EFE) scoring term into TD-MPC2's MPPI
 - **Variance-Matched Scaling:** The epistemic bonus is automatically scaled relative to the extrinsic reward signal, ensuring task-agnostic behavior across different observation/action dimensionalities.
 - **Adaptive Beta:** A per-episode controller adjusts the exploration-exploitation trade-off based on an EMA of information gain.
 
+## Important Implementation Notes
+
+- FreeGuide keeps TD-MPC2's **main dynamics model** as the rollout transition used during planning; the ensemble is queried only to estimate disagreement.
+- `calibration_steps` is interpreted in **environment steps**, not episode count.
+- The adaptive `beta` controller is updated once per episode, but its target is calibrated from trajectory-level information gain measured over the first `calibration_steps` env steps.
+- Current server experiments default to `compile=false`; with the present `torch + torchrl + tensordict` stack, `compile=true` can trigger CUDAGraph-related crashes in the RND baseline.
+
 ## Project Structure
 
 ```

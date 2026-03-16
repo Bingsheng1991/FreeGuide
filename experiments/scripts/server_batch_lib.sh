@@ -11,7 +11,7 @@ COMMON_FLAGS=(
   "steps=3000000"
   "enable_wandb=false"
   "wandb_project=freeguide"
-  "compile=true"
+  "compile=false"
   "save_csv=true"
   "save_video=false"
   "eval_freq=50000"
@@ -142,6 +142,7 @@ run_batch() {
 
   while true; do
     local all_done=1
+    local failed_detected=0
     for spec in "${specs[@]}"; do
       IFS='|' read -r task seed exp_name extra_flags <<< "$spec"
       local eval_csv="$TRAIN_ROOT/logs/${task}/${seed}/${exp_name}/eval.csv"
@@ -156,10 +157,13 @@ run_batch() {
         all_done=0
         break
       fi
-      all_done=0
+      failed_detected=1
       break
     done
     if [ "$all_done" -eq 1 ]; then
+      break
+    fi
+    if [ "$failed_detected" -eq 1 ]; then
       break
     fi
     sleep 60

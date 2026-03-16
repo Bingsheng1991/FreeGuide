@@ -59,6 +59,13 @@ experiments/SERVER_EXPERIMENT_GUIDE.md
 - 当前服务器已经验证通过的额外依赖包括：
   `tensordict`、`torchrl`、`termcolor`、`wandb`、`h5py`、`moviepy`、`requests[socks]`
 - 训练启动时可能出现 Gym 弃用警告；目前这是警告，不是阻塞错误
+- 当前服务器上的正式论文实验默认使用 `compile=false`
+- 原因是当前 `torch + torchrl + tensordict` 组合下，`compile=true` 可能让 `tdmpc2_rnd` 在首次 `50k eval` 附近触发 `CUDAGraphs` 覆写错误
+- 2026-03-16 之后的有效 FreeGuide 结果还要求：
+  - 自适应 `beta` 按 environment steps 校准
+  - `beta` 更新符号修正
+  - epistemic 统计使用 trajectory-level gain
+  - planning rollout 继续使用 TD-MPC2 主 dynamics，ensemble 只用于 disagreement
 - 汇报进度时不要只依赖 `check_progress.sh` 的 RUNNING 数量；要同时检查 GPU PID、`train.csv` 最新 step、以及实际日志
 - 当前服务器上的默认长期运行规则已经更新为：**总控进 `tmux`，训练子进程继续用 `nohup`**
 
